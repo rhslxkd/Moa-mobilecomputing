@@ -18,6 +18,7 @@ import { useRouter } from "expo-router";
 import { SvgXml } from "react-native-svg";
 import { LinearGradient } from "expo-linear-gradient";
 import MoaLogo from "@/components/common/MoaLogo";
+import { useAuth } from "@/contexts/AuthContext";
 
 const { width, height } = Dimensions.get("window");
 
@@ -139,6 +140,8 @@ function BackgroundBlobs() {
 // ── 메인 화면 ────────────────────────────────────────────────────
 export default function WelcomeScreen() {
   const router = useRouter();
+  const { user } = useAuth();
+  const displayName = user?.fullName || user?.username || "";
 
   return (
     <View style={styles.root}>
@@ -153,7 +156,7 @@ export default function WelcomeScreen() {
         {/* 텍스트 블록 — 피그마: top=262, left=30 */}
         <View style={styles.textBlock}>
           <Text style={styles.greeting}>
-            환영해요! <Text style={styles.greetingBold}>손범관</Text>님.
+            환영해요! <Text style={styles.greetingBold}>{displayName}</Text>님.
           </Text>
           <Text style={styles.greeting}>{" "}</Text>
           <Text style={styles.subtitle}>프로젝트 도구부터 기여도 측정까지,</Text>

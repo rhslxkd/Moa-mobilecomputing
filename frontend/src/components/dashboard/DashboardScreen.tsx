@@ -17,6 +17,7 @@ import { SvgXml } from "react-native-svg";
 import { BlurView } from "expo-blur";
 import { useTheme, useIsDark } from "../../hooks/useTheme";
 import { useProject, type Project } from "../../contexts/ProjectContext";
+import { useAuth } from "../../contexts/AuthContext";
 import type { Theme } from "../../constants/theme";
 import AlarmModal from "../modals/AlarmModal";
 
@@ -94,6 +95,8 @@ export default function DashboardScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { projects, currentProject, setCurrentProject } = useProject();
+  const { user } = useAuth();
+  const displayName = user?.fullName || user?.username || "";
   const s = makeStyles(C, isDark, insets);
   const [alarmOpen, setAlarmOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -138,7 +141,7 @@ export default function DashboardScreen() {
             <MoaLogo />
           </View>
           <Text style={s.headerTitle}>
-            <Text style={{ fontWeight: "800" }}>박지민</Text>님의 프로젝트
+            <Text style={{ fontWeight: "800" }}>{displayName}</Text>님의 프로젝트
           </Text>
         </View>
         <View style={s.headerRight}>

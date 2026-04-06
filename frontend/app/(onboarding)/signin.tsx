@@ -1,18 +1,6 @@
 /**
  * app/(onboarding)/signin.tsx
- *
- * 피그마 SignIn 화면 기반
- *
- * 레이아웃:
- *   - 좌상단: MOA 로고 아이콘 + "MOA" 텍스트
- *   - 헤딩: "팀플의 모든 것," / "MOA 시작하기"
- *   - InputBox: 아이디, 비밀번호
- *   - 링크: 회원가입 | 아이디 / 비밀번호 찾기
- *   - 하단 고정: 로그인 Button
- *
- * 플로우:
- *   로그인 → /(tabs) (메인)
- *   회원가입 → /(onboarding)/usersetup
+ * 로그인 화면 — POST /auth/login 연결
  */
 
 import React, { useState } from "react";
@@ -24,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -31,11 +20,13 @@ import { useTheme } from "@/hooks/useTheme";
 import InputBox from "@/components/common/InputBox";
 import Button from "@/components/common/Button";
 import MoaLogo from "@/components/common/MoaLogo";
+import { AuthAPI, TokenStore } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
-// ── 메인 화면 ──────────────────────────────
 export default function SignInScreen() {
   const C = useTheme();
   const router = useRouter();
+  const { fetchUser } = useAuth();
 
   const [id, setId] = useState("");
   const [password, setPassword] = useState("");
@@ -43,7 +34,7 @@ export default function SignInScreen() {
   const [pwError, setPwError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     let valid = true;
 
     if (!id.trim()) {
@@ -63,11 +54,24 @@ export default function SignInScreen() {
     if (!valid) return;
 
     setLoading(true);
-    // TODO: 실제 로그인 API 연결
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      const data = await AuthAPI.login({ username: id.trim(), password });
+      TokenStore.set(data.access_token);
+      await fetchUser();
       router.replace("/(tabs)");
-    }, 800);
+    } catch (err: any) {
+      const msg = err?.message ?? "로그인에 실패했습니다.";
+      // 서버 에러 메시지를 필드별로 분류
+      if (msg.includes("아이디") || msg.includes("username")) {
+        setIdError(msg);
+      } else if (msg.includes("비밀번호") || msg.includes("password")) {
+        setPwError(msg);
+      } else {
+        Alert.alert("로그인 실패", msg);
+      }
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -81,12 +85,10 @@ export default function SignInScreen() {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* ── 상단 로고 ── */}
           <View style={styles.logoRow}>
             <MoaLogo size={48} />
           </View>
 
-          {/* ── 헤딩 ── */}
           <View style={styles.heading}>
             <Text style={[styles.headingLine1, { color: C.text }]}>
               팀플의 모든 것,
@@ -97,7 +99,6 @@ export default function SignInScreen() {
             </Text>
           </View>
 
-          {/* ── 입력 폼 ── */}
           <View style={styles.form}>
             <InputBox
               label="아이디"
@@ -123,7 +124,6 @@ export default function SignInScreen() {
               onSubmitEditing={handleLogin}
             />
 
-            {/* 회원가입 | 아이디/비밀번호 찾기 */}
             <View style={styles.linkRow}>
               <TouchableOpacity
                 onPress={() => router.push("/(onboarding)/signup" as any)}
@@ -148,13 +148,8 @@ export default function SignInScreen() {
           </View>
         </ScrollView>
 
-        {/* ── 하단 고정 로그인 버튼 ── */}
         <View style={[styles.footer, { backgroundColor: C.bg }]}>
-          <Button
-            label="로그인"
-            onPress={handleLogin}
-            loading={loading}
-          />
+          <Button label="로그인" onPress={handleLogin} loading={loading} />
         </View>
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -163,49 +158,22 @@ export default function SignInScreen() {
 
 const styles = StyleSheet.create({
   safe: { flex: 1 },
-
   scroll: {
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 16,
     flexGrow: 1,
   },
-
-  // 로고
   logoRow: {
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
     marginBottom: 48,
   },
-  logoText: {
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 1,
-  },
-
-  // 헤딩
-  heading: {
-    marginBottom: 48,
-    gap: 2,
-  },
-  headingLine1: {
-    fontSize: 32,
-    fontWeight: "700",
-    lineHeight: 42,
-  },
-  headingLine2: {
-    fontSize: 32,
-    fontWeight: "700",
-    lineHeight: 42,
-  },
-
-  // 폼
-  form: {
-    gap: 20,
-  },
-
-  // 링크 행
+  heading: { marginBottom: 48, gap: 2 },
+  headingLine1: { fontSize: 32, fontWeight: "700", lineHeight: 42 },
+  headingLine2: { fontSize: 32, fontWeight: "700", lineHeight: 42 },
+  form: { gap: 20 },
   linkRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -213,20 +181,9 @@ const styles = StyleSheet.create({
     gap: 12,
     marginTop: 4,
   },
-  linkPrimary: {
-    fontSize: 14,
-    fontWeight: "600",
-  },
-  divider: {
-    width: 1,
-    height: 12,
-  },
-  linkMuted: {
-    fontSize: 14,
-    fontWeight: "400",
-  },
-
-  // 하단 버튼
+  linkPrimary: { fontSize: 14, fontWeight: "600" },
+  divider: { width: 1, height: 12 },
+  linkMuted: { fontSize: 14, fontWeight: "400" },
   footer: {
     paddingHorizontal: 24,
     paddingBottom: Platform.OS === "ios" ? 16 : 24,

@@ -1,3 +1,8 @@
+/**
+ * app/(onboarding)/find-account.tsx
+ * 아이디 찾기 / 비밀번호 찾기
+ */
+
 import React, { useState } from "react";
 import {
   View,
@@ -8,36 +13,60 @@ import {
   Platform,
   ScrollView,
   Keyboard,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import InputBox from "@/components/common/InputBox";
 import Button from "@/components/common/Button";
 import MoaLogo from "@/components/common/MoaLogo";
+import { AuthAPI } from "@/services/api";
 
-// ── 컴포넌트: 아이디 찾기 ─────────────────────
+// ── 아이디 찾기 ─────────────────────────────
 function FindIDTab() {
   const C = useTheme();
   const router = useRouter();
+
   const [email, setEmail] = useState("");
   const [authCode, setAuthCode] = useState("");
-  const [phase, setPhase] = useState<"form" | "success">("form");
+  const [foundUsername, setFoundUsername] = useState("");
 
   const [codeSent, setCodeSent] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [phase, setPhase] = useState<"form" | "success">("form");
 
-  const handleSendCode = () => {
+  const [sendLoading, setSendLoading] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [findLoading, setFindLoading] = useState(false);
+
+  const handleSendCode = async () => {
     if (!email) return;
     Keyboard.dismiss();
-    setCodeSent(true);
+    setSendLoading(true);
+    try {
+      await AuthAPI.findIdSendOtp({ email: email.trim() });
+      setCodeSent(true);
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "인증번호 발송에 실패했습니다.");
+    } finally {
+      setSendLoading(false);
+    }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (!authCode) return;
     Keyboard.dismiss();
-    setVerified(true);
+    setVerifyLoading(true);
+    try {
+      const data = await AuthAPI.findIdVerify({ email: email.trim(), token: authCode.trim() });
+      setFoundUsername(data.username);
+      setVerified(true);
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "인증번호가 올바르지 않습니다.");
+    } finally {
+      setVerifyLoading(false);
+    }
   };
 
   const handleFindID = () => {
@@ -48,9 +77,10 @@ function FindIDTab() {
   if (phase === "success") {
     return (
       <View style={styles.tabContent}>
-        <Text style={[styles.successText, { color: C.text }]}>
-          이메일로 아이디를 전송하였습니다.
-        </Text>
+        <View style={styles.successBox}>
+          <Text style={[styles.successLabel, { color: C.textMuted }]}>회원님의 아이디</Text>
+          <Text style={[styles.successUsername, { color: C.primary }]}>{foundUsername}</Text>
+        </View>
         <View style={{ flex: 1 }} />
         <Button label="로그인 화면으로 돌아가기" onPress={() => router.back()} />
       </View>
@@ -69,48 +99,54 @@ function FindIDTab() {
           autoCapitalize="none"
         />
         <TouchableOpacity
-          style={[styles.sideBtn, { backgroundColor: email ? C.primary : C.bgMuted }]}
+          style={[styles.sideBtn, { backgroundColor: email && !sendLoading ? C.primary : C.bgMuted }]}
           onPress={handleSendCode}
-          disabled={!email}
+          disabled={!email || sendLoading}
           activeOpacity={0.8}
         >
-          <Text style={[styles.sideBtnText, { color: email ? "#FFF" : C.textMuted }]}>
-            인증번호 발송
+          <Text style={[styles.sideBtnText, { color: email && !sendLoading ? "#FFF" : C.textMuted }]}>
+            {sendLoading ? "발송 중..." : codeSent ? "재발송" : "인증번호 발송"}
           </Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.inputRow}>
-        <InputBox
-          containerStyle={{ flex: 1 }}
-          placeholder="인증번호를 입력하세요."
-          value={authCode}
-          onChangeText={setAuthCode}
-          keyboardType="number-pad"
-        />
-        <TouchableOpacity
-          style={[styles.sideBtn, { backgroundColor: authCode && !verified ? C.primary : C.bgMuted }]}
-          onPress={handleVerify}
-          disabled={!authCode || verified}
-          activeOpacity={0.8}
-        >
-          <Text style={[styles.sideBtnText, { color: authCode && !verified ? "#FFF" : C.textMuted }]}>
-            확인
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {codeSent && (
+        <View style={styles.inputRow}>
+          <InputBox
+            containerStyle={{ flex: 1 }}
+            placeholder="인증번호를 입력하세요."
+            value={authCode}
+            onChangeText={setAuthCode}
+            keyboardType="number-pad"
+          />
+          <TouchableOpacity
+            style={[
+              styles.sideBtn,
+              { backgroundColor: authCode && !verified && !verifyLoading ? C.primary : C.bgMuted },
+            ]}
+            onPress={handleVerify}
+            disabled={!authCode || verified || verifyLoading}
+            activeOpacity={0.8}
+          >
+            <Text
+              style={[
+                styles.sideBtnText,
+                { color: authCode && !verified && !verifyLoading ? "#FFF" : C.textMuted },
+              ]}
+            >
+              {verifyLoading ? "확인 중..." : verified ? "✓ 완료" : "확인"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
 
       <View style={{ flex: 1 }} />
-      <Button
-        label="아이디 찾기"
-        onPress={handleFindID}
-        disabled={!verified}
-      />
+      <Button label="아이디 찾기" onPress={handleFindID} disabled={!verified} />
     </View>
   );
 }
 
-// ── 컴포넌트: 비밀번호 찾기 ────────────────────
+// ── 비밀번호 찾기 ───────────────────────────
 function FindPWTab() {
   const C = useTheme();
   const router = useRouter();
@@ -118,25 +154,49 @@ function FindPWTab() {
   const [id, setId] = useState("");
   const [email, setEmail] = useState("");
   const [authCode, setAuthCode] = useState("");
-
   const [newPw, setNewPw] = useState("");
   const [newPwCheck, setNewPwCheck] = useState("");
 
   const [phase, setPhase] = useState<"verify" | "reset" | "success">("verify");
-
   const [codeSent, setCodeSent] = useState(false);
   const [verified, setVerified] = useState(false);
+  const [resetToken, setResetToken] = useState("");
 
-  const handleSendCode = () => {
+  const [sendLoading, setSendLoading] = useState(false);
+  const [verifyLoading, setVerifyLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
+
+  const handleSendCode = async () => {
     if (!email || !id) return;
     Keyboard.dismiss();
-    setCodeSent(true);
+    setSendLoading(true);
+    try {
+      await AuthAPI.findPasswordSendOtp({ email: email.trim(), username: id.trim() });
+      setCodeSent(true);
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "인증번호 발송에 실패했습니다.");
+    } finally {
+      setSendLoading(false);
+    }
   };
 
-  const handleVerify = () => {
+  const handleVerify = async () => {
     if (!authCode) return;
     Keyboard.dismiss();
-    setVerified(true);
+    setVerifyLoading(true);
+    try {
+      const data = await AuthAPI.findPasswordVerify({
+        email: email.trim(),
+        username: id.trim(),
+        token: authCode.trim(),
+      });
+      setResetToken(data.access_token);
+      setVerified(true);
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "인증번호가 올바르지 않습니다.");
+    } finally {
+      setVerifyLoading(false);
+    }
   };
 
   const handleNextToReset = () => {
@@ -144,9 +204,21 @@ function FindPWTab() {
     setPhase("reset");
   };
 
-  const handleResetPassword = () => {
-    if (!newPw || !newPwCheck || newPw !== newPwCheck) return;
-    setPhase("success");
+  const handleResetPassword = async () => {
+    if (!newPw || newPw !== newPwCheck) return;
+    if (newPw.length < 8) {
+      Alert.alert("오류", "비밀번호는 8자 이상이어야 합니다.");
+      return;
+    }
+    setResetLoading(true);
+    try {
+      await AuthAPI.resetPassword({ new_password: newPw }, resetToken);
+      setPhase("success");
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "비밀번호 재설정에 실패했습니다.");
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   if (phase === "success") {
@@ -162,7 +234,7 @@ function FindPWTab() {
   }
 
   if (phase === "reset") {
-    const isResetReady = newPw.length > 0 && newPw === newPwCheck;
+    const isResetReady = newPw.length >= 8 && newPw === newPwCheck;
     return (
       <View style={styles.tabContent}>
         <View style={{ gap: 24 }}>
@@ -185,11 +257,11 @@ function FindPWTab() {
             autoCapitalize="none"
           />
         </View>
-
         <View style={{ flex: 1 }} />
         <Button
           label="비밀번호 재설정"
           onPress={handleResetPassword}
+          loading={resetLoading}
           disabled={!isResetReady}
         />
       </View>
@@ -199,7 +271,6 @@ function FindPWTab() {
   return (
     <View style={styles.tabContent}>
       <View style={{ gap: 16 }}>
-        {/* ID */}
         <InputBox
           placeholder="아이디를 입력하세요."
           value={id}
@@ -207,7 +278,6 @@ function FindPWTab() {
           autoCapitalize="none"
         />
 
-        {/* 이메일 */}
         <View style={styles.inputRow}>
           <InputBox
             containerStyle={{ flex: 1 }}
@@ -218,45 +288,50 @@ function FindPWTab() {
             autoCapitalize="none"
           />
           <TouchableOpacity
-            style={[styles.sideBtn, { backgroundColor: email && id ? C.primary : C.bgMuted }]}
+            style={[styles.sideBtn, { backgroundColor: email && id && !sendLoading ? C.primary : C.bgMuted }]}
             onPress={handleSendCode}
-            disabled={!email || !id}
+            disabled={!email || !id || sendLoading}
             activeOpacity={0.8}
           >
-            <Text style={[styles.sideBtnText, { color: email && id ? "#FFF" : C.textMuted }]}>
-              인증번호 발송
+            <Text style={[styles.sideBtnText, { color: email && id && !sendLoading ? "#FFF" : C.textMuted }]}>
+              {sendLoading ? "발송 중..." : codeSent ? "재발송" : "인증번호 발송"}
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* 인증번호 */}
-        <View style={styles.inputRow}>
-          <InputBox
-            containerStyle={{ flex: 1 }}
-            placeholder="인증번호를 입력하세요."
-            value={authCode}
-            onChangeText={setAuthCode}
-            keyboardType="number-pad"
-          />
-          <TouchableOpacity
-            style={[styles.sideBtn, { backgroundColor: authCode && !verified ? C.primary : C.bgMuted }]}
-            onPress={handleVerify}
-            disabled={!authCode || verified}
-            activeOpacity={0.8}
-          >
-            <Text style={[styles.sideBtnText, { color: authCode && !verified ? "#FFF" : C.textMuted }]}>
-              확인
-            </Text>
-          </TouchableOpacity>
-        </View>
+        {codeSent && (
+          <View style={styles.inputRow}>
+            <InputBox
+              containerStyle={{ flex: 1 }}
+              placeholder="인증번호를 입력하세요."
+              value={authCode}
+              onChangeText={setAuthCode}
+              keyboardType="number-pad"
+            />
+            <TouchableOpacity
+              style={[
+                styles.sideBtn,
+                { backgroundColor: authCode && !verified && !verifyLoading ? C.primary : C.bgMuted },
+              ]}
+              onPress={handleVerify}
+              disabled={!authCode || verified || verifyLoading}
+              activeOpacity={0.8}
+            >
+              <Text
+                style={[
+                  styles.sideBtnText,
+                  { color: authCode && !verified && !verifyLoading ? "#FFF" : C.textMuted },
+                ]}
+              >
+                {verifyLoading ? "확인 중..." : verified ? "✓ 완료" : "확인"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <View style={{ flex: 1 }} />
-      <Button
-        label="다음"
-        onPress={handleNextToReset}
-        disabled={!verified}
-      />
+      <Button label="다음" onPress={handleNextToReset} disabled={!verified} />
     </View>
   );
 }
@@ -273,7 +348,6 @@ export default function FindAccountScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
-        {/* 헤더 & 로고 */}
         <View style={styles.header}>
           <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
             <Text style={[styles.backArrow, { color: C.text }]}>‹</Text>
@@ -284,14 +358,18 @@ export default function FindAccountScreen() {
           </View>
         </View>
 
-        {/* 탭 네비게이션 */}
         <View style={styles.tabContainer}>
           <TouchableOpacity
             style={[styles.tabBtn, tab === "ID" && { borderBottomColor: C.text }]}
             onPress={() => setTab("ID")}
             activeOpacity={0.8}
           >
-            <Text style={[styles.tabText, { color: tab === "ID" ? C.text : C.textMuted, fontWeight: tab === "ID" ? "700" : "500" }]}>
+            <Text
+              style={[
+                styles.tabText,
+                { color: tab === "ID" ? C.text : C.textMuted, fontWeight: tab === "ID" ? "700" : "500" },
+              ]}
+            >
               아이디 찾기
             </Text>
           </TouchableOpacity>
@@ -300,13 +378,17 @@ export default function FindAccountScreen() {
             onPress={() => setTab("PW")}
             activeOpacity={0.8}
           >
-            <Text style={[styles.tabText, { color: tab === "PW" ? C.text : C.textMuted, fontWeight: tab === "PW" ? "700" : "500" }]}>
+            <Text
+              style={[
+                styles.tabText,
+                { color: tab === "PW" ? C.text : C.textMuted, fontWeight: tab === "PW" ? "700" : "500" },
+              ]}
+            >
               비밀번호 찾기
             </Text>
           </TouchableOpacity>
         </View>
 
-        {/* 탭 콘텐츠 */}
         <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
           {tab === "ID" ? <FindIDTab /> : <FindPWTab />}
         </ScrollView>
@@ -318,53 +400,22 @@ export default function FindAccountScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
 
-  header: {
-    paddingHorizontal: 8,
-    paddingTop: 8,
-    paddingBottom: 24,
-  },
-  backBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    alignSelf: "flex-start",
-  },
-  backArrow: {
-    fontSize: 28,
-    fontWeight: "300",
-  },
-  logoWrap: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 24,
-    marginTop: 12,
-    gap: 6,
-  },
-  appName: {
-    fontSize: 16,
-    fontWeight: "800",
-    letterSpacing: 0.5,
-  },
+  header: { paddingHorizontal: 8, paddingTop: 8, paddingBottom: 24 },
+  backBtn: { paddingHorizontal: 16, paddingVertical: 8, alignSelf: "flex-start" },
+  backArrow: { fontSize: 28, fontWeight: "300" },
+  logoWrap: { flexDirection: "row", alignItems: "center", paddingHorizontal: 24, marginTop: 12, gap: 6 },
+  appName: { fontSize: 16, fontWeight: "800", letterSpacing: 0.5 },
 
   tabContainer: {
     flexDirection: "row",
     paddingHorizontal: 24,
     borderBottomWidth: 1,
-    borderBottomColor: "#E2E8F0", // C.border
+    borderBottomColor: "#E2E8F0",
   },
-  tabBtn: {
-    flex: 1,
-    paddingVertical: 12,
-    alignItems: "center",
-    borderBottomWidth: 2,
-    borderBottomColor: "transparent",
-  },
-  tabText: {
-    fontSize: 15,
-  },
+  tabBtn: { flex: 1, paddingVertical: 12, alignItems: "center", borderBottomWidth: 2, borderBottomColor: "transparent" },
+  tabText: { fontSize: 15 },
 
-  scroll: {
-    flexGrow: 1,
-  },
+  scroll: { flexGrow: 1 },
   tabContent: {
     flex: 1,
     paddingHorizontal: 24,
@@ -372,31 +423,16 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
   },
 
-  // 성공 메시지
-  successText: {
-    fontSize: 15,
-    fontWeight: "500",
-    color: "#475569",
-    marginTop: 16,
-    marginLeft: 4,
-  },
-
-  // 인풋 row
-  inputRow: {
-    flexDirection: "row",
-    alignItems: "stretch",
-    gap: 8,
-    marginBottom: 16,
-  },
-  sideBtn: {
-    width: 100, // 추가: 버튼들을 고정된 동일 크기로 변경
-    borderRadius: 8,
+  successBox: {
     alignItems: "center",
-    justifyContent: "center",
+    paddingVertical: 32,
+    gap: 8,
   },
-  sideBtnText: {
-    fontSize: 13,
-    fontWeight: "600",
-    letterSpacing: -0.3,
-  },
+  successLabel: { fontSize: 14 },
+  successUsername: { fontSize: 24, fontWeight: "700" },
+  successText: { fontSize: 15, fontWeight: "500", marginTop: 16, marginLeft: 4 },
+
+  inputRow: { flexDirection: "row", alignItems: "stretch", gap: 8, marginBottom: 0 },
+  sideBtn: { width: 100, borderRadius: 8, alignItems: "center", justifyContent: "center" },
+  sideBtnText: { fontSize: 13, fontWeight: "600", letterSpacing: -0.3 },
 });

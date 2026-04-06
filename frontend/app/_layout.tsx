@@ -15,6 +15,7 @@ import { StatusBar } from "expo-status-bar";
 import * as SplashScreen from "expo-splash-screen";
 import { useColorScheme } from "react-native";
 import { ProjectProvider } from "@/contexts/ProjectContext";
+import { AuthProvider } from "@/contexts/AuthContext";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 
 // 스플래시 스크린 자동 숨김 방지 (폰트 로딩 후 직접 숨김)
@@ -31,6 +32,7 @@ export default function RootLayout() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <AuthProvider>
       <ProjectProvider>
         <StatusBar style={isDark ? "light" : "dark"} />
         <Stack screenOptions={{ headerShown: false }}>
@@ -97,6 +99,7 @@ export default function RootLayout() {
           <Stack.Screen name="+not-found" />
         </Stack>
       </ProjectProvider>
+      </AuthProvider>
     </GestureHandlerRootView>
   );
 }

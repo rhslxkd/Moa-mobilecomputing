@@ -1,15 +1,10 @@
 /**
  * app/(onboarding)/usersetup.tsx
  *
- * 피그마 UserSetup 화면 기반 — 3단계 유저 설정
- *
- * Step 1: 역할 선택 (Student / Expert)
- * Step 2: 소속 정보 입력
- *   - Student: 학교, 학과, 학년
- *   - Expert:  회사, 직무
- * Step 3: 이름 입력 (어떻게 불러드릴까요?)
- *
- * 완료 → /(onboarding)/welcome
+ * 3단계 유저 설정
+ * Step 1: 역할 선택 (학생 / 직장인)
+ * Step 2: 소속 정보 입력 → POST /auth/setup/affiliation
+ * Step 3: 이름 입력 → POST /auth/setup/name → welcome
  */
 
 import React, { useState, useEffect } from "react";
@@ -21,30 +16,34 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
-  TextInput as RNTextInput,
   Keyboard,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import InputBox from "@/components/common/InputBox";
 import Button from "@/components/common/Button";
-
 import MoaLogo from "@/components/common/MoaLogo";
+import { AuthAPI } from "@/services/api";
+import { useAuth } from "@/contexts/AuthContext";
 
 // ── 역할 카드 ──────────────────────────────
 type Role = "student" | "expert";
 
-interface RoleCardProps {
+function RoleCard({
+  selected,
+  title,
+  description,
+  emoji,
+  onPress,
+}: {
   selected: boolean;
   title: string;
   description: string;
   emoji: string;
   onPress: () => void;
-}
-
-function RoleCard({ selected, title, description, emoji, onPress }: RoleCardProps) {
+}) {
   const C = useTheme();
   return (
     <TouchableOpacity
@@ -78,64 +77,16 @@ function RoleCard({ selected, title, description, emoji, onPress }: RoleCardProp
   );
 }
 
-// ── Step 3: 이름 입력 ──────────────────────
-function NameStep({ onNext }: { onNext: (lastName: string, firstName: string) => void }) {
-  const C = useTheme();
-  const [lastName, setLastName] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [error, setError] = useState("");
-
-  const handleNext = () => {
-    if (!lastName.trim() || !firstName.trim()) {
-      setError("성, 이름을 모두 입력해주세요.");
-      return;
-    }
-    setError("");
-    onNext(lastName.trim(), firstName.trim());
-  };
-
-  return (
-    <>
-      <ScrollView contentContainerStyle={styles.stepScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={styles.logoRow}>
-          <MoaLogo size={36} />
-          <Text style={[styles.logoText, { color: C.primary }]}>MOA</Text>
-        </View>
-        <Text style={[styles.stepSubtitle, { color: C.textMuted }]}>
-          어떻게 부르면 좋을까요?
-        </Text>
-        <Text style={[styles.stepTitle, { color: C.text }]}>
-          이름을 입력해주세요.
-        </Text>
-        <View style={{ marginTop: 32, gap: 15 }}>
-          <InputBox
-            label="성"
-            placeholder="성을 입력해주세요."
-            value={lastName}
-            onChangeText={(t) => { setLastName(t); setError(""); }}
-            error={error ? " " : ""} // 에러 텍스트 공간 확보
-            returnKeyType="next"
-          />
-          <InputBox
-            label="이름"
-            placeholder="이름을 입력해주세요."
-            value={firstName}
-            onChangeText={(t) => { setFirstName(t); setError(""); }}
-            error={error}
-            returnKeyType="done"
-            onSubmitEditing={handleNext}
-          />
-        </View>
-      </ScrollView>
-      <View style={[styles.footer, { backgroundColor: C.bg }]}>
-        <Button label="다음" onPress={handleNext} disabled={!lastName.trim() || !firstName.trim()} />
-      </View>
-    </>
-  );
-}
-
 // ── Step 1: 역할 선택 ──────────────────────
-function RoleStep({ role, setRole, onNext }: { role: Role | null; setRole: (r: Role) => void; onNext: () => void }) {
+function RoleStep({
+  role,
+  setRole,
+  onNext,
+}: {
+  role: Role | null;
+  setRole: (r: Role) => void;
+  onNext: () => void;
+}) {
   const C = useTheme();
   return (
     <>
@@ -144,12 +95,8 @@ function RoleStep({ role, setRole, onNext }: { role: Role | null; setRole: (r: R
           <MoaLogo size={36} />
           <Text style={[styles.logoText, { color: C.primary }]}>MOA</Text>
         </View>
-        <Text style={[styles.stepTitle, { color: C.text }]}>
-          어디에서 활동 중이신가요?
-        </Text>
-        <Text style={[styles.stepSubtitle, { color: C.textMuted }]}>
-          소속을 알려주세요.
-        </Text>
+        <Text style={[styles.stepTitle, { color: C.text }]}>어디에서 활동 중이신가요?</Text>
+        <Text style={[styles.stepSub, { color: C.textMuted }]}>소속을 알려주세요.</Text>
         <View style={{ marginTop: 32, gap: 12 }}>
           <RoleCard
             selected={role === "student"}
@@ -175,14 +122,16 @@ function RoleStep({ role, setRole, onNext }: { role: Role | null; setRole: (r: R
 }
 
 // ── Step 2: 소속 정보 입력 ─────────────────
-interface AffiliationStepProps {
+function AffiliationStep({
+  role,
+  onComplete,
+}: {
   role: Role;
   onComplete: () => void;
-}
-
-function AffiliationStep({ role, onComplete }: AffiliationStepProps) {
+}) {
   const C = useTheme();
   const [loading, setLoading] = useState(false);
+  const isStudent = role === "student";
 
   // Student fields
   const [school, setSchool] = useState("");
@@ -193,19 +142,35 @@ function AffiliationStep({ role, onComplete }: AffiliationStepProps) {
   const [company, setCompany] = useState("");
   const [jobTitle, setJobTitle] = useState("");
 
-  const isStudent = role === "student";
-
   const canSubmit = isStudent
     ? school.trim() && dept.trim() && grade.trim()
     : company.trim() && jobTitle.trim();
 
-  const handleComplete = () => {
+  const handleComplete = async () => {
     if (!canSubmit) return;
     setLoading(true);
-    setTimeout(() => {
-      setLoading(false);
+
+    try {
+      if (isStudent) {
+        await AuthAPI.setupAffiliation({
+          affiliation_type: "student",
+          organization_name: school.trim(),
+          department: dept.trim(),
+          student_id: grade.trim(),
+        });
+      } else {
+        await AuthAPI.setupAffiliation({
+          affiliation_type: "worker",
+          organization_name: company.trim(),
+          department: jobTitle.trim(),
+        });
+      }
       onComplete();
-    }, 800);
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "소속 정보 저장에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -222,7 +187,7 @@ function AffiliationStep({ role, onComplete }: AffiliationStepProps) {
         <Text style={[styles.stepTitle, { color: C.text }]}>
           {isStudent ? "학교 정보를\n알려주세요." : "직장 정보를\n알려주세요."}
         </Text>
-        <Text style={[styles.stepSubtitle, { color: C.textMuted }]}>
+        <Text style={[styles.stepSub, { color: C.textMuted }]}>
           {isStudent ? "학교, 학과, 학년을 입력해주세요." : "회사명과 직무를 입력해주세요."}
         </Text>
         <View style={{ marginTop: 32, gap: 20 }}>
@@ -273,7 +238,83 @@ function AffiliationStep({ role, onComplete }: AffiliationStepProps) {
         </View>
       </ScrollView>
       <View style={[styles.footer, { backgroundColor: C.bg }]}>
-        <Button label="완료" onPress={handleComplete} loading={loading} disabled={!canSubmit} />
+        <Button label="다음" onPress={handleComplete} loading={loading} disabled={!canSubmit} />
+      </View>
+    </>
+  );
+}
+
+// ── Step 3: 이름 입력 ──────────────────────
+function NameStep({ onNext }: { onNext: () => void }) {
+  const C = useTheme();
+  const { fetchUser } = useAuth();
+  const [lastName, setLastName] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleNext = async () => {
+    if (!lastName.trim() || !firstName.trim()) {
+      setError("성, 이름을 모두 입력해주세요.");
+      return;
+    }
+    setError("");
+    setLoading(true);
+
+    try {
+      await AuthAPI.setupName({
+        last_name: lastName.trim(),
+        first_name: firstName.trim(),
+      });
+      await fetchUser(); // 이름 저장 후 최신 프로필 불러오기
+      onNext();
+    } catch (err: any) {
+      Alert.alert("오류", err?.message ?? "이름 저장에 실패했습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <ScrollView
+        contentContainerStyle={styles.stepScroll}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.logoRow}>
+          <MoaLogo size={36} />
+          <Text style={[styles.logoText, { color: C.primary }]}>MOA</Text>
+        </View>
+        <Text style={[styles.stepSub, { color: C.textMuted }]}>어떻게 부르면 좋을까요?</Text>
+        <Text style={[styles.stepTitle, { color: C.text }]}>이름을 입력해주세요.</Text>
+        <View style={{ marginTop: 32, gap: 15 }}>
+          <InputBox
+            label="성"
+            placeholder="성을 입력해주세요."
+            value={lastName}
+            onChangeText={(t) => { setLastName(t); setError(""); }}
+            error={error ? " " : ""}
+            returnKeyType="next"
+          />
+          <InputBox
+            label="이름"
+            placeholder="이름을 입력해주세요."
+            value={firstName}
+            onChangeText={(t) => { setFirstName(t); setError(""); }}
+            error={error}
+            returnKeyType="done"
+            onSubmitEditing={handleNext}
+          />
+        </View>
+      </ScrollView>
+      <View style={[styles.footer, { backgroundColor: C.bg }]}>
+        <Button
+          label="완료"
+          onPress={handleNext}
+          loading={loading}
+          disabled={!lastName.trim() || !firstName.trim()}
+        />
       </View>
     </>
   );
@@ -288,11 +329,8 @@ export default function UserSetupScreen() {
   const [role, setRole] = useState<Role | null>(null);
 
   useEffect(() => {
-    // 이전 화면(signup)에서 넘어온 암호 입력용 고스트 키보드 강제 파괴
     Keyboard.dismiss();
   }, []);
-
-  const TOTAL_STEPS = 3;
 
   const handleBack = () => {
     if (step === 1) router.back();
@@ -311,7 +349,6 @@ export default function UserSetupScreen() {
             <Text style={[styles.backArrow, { color: C.text }]}>‹</Text>
           </TouchableOpacity>
 
-          {/* 스텝 인디케이터 */}
           <View style={styles.stepIndicator}>
             {([1, 2, 3] as const).map((s) => (
               <View
@@ -330,14 +367,15 @@ export default function UserSetupScreen() {
           <View style={styles.backBtn} />
         </View>
 
-        {step === 1 && <RoleStep role={role} setRole={setRole} onNext={() => setStep(2)} />}
-        {step === 2 && role && (
-          <AffiliationStep
-            role={role}
-            onComplete={() => setStep(3)}
-          />
+        {step === 1 && (
+          <RoleStep role={role} setRole={setRole} onNext={() => setStep(2)} />
         )}
-        {step === 3 && <NameStep onNext={(last, first) => { router.replace("/(onboarding)/welcome" as any); }} />}
+        {step === 2 && role && (
+          <AffiliationStep role={role} onComplete={() => setStep(3)} />
+        )}
+        {step === 3 && (
+          <NameStep onNext={() => router.replace("/(onboarding)/welcome" as any)} />
+        )}
       </SafeAreaView>
     </KeyboardAvoidingView>
   );
@@ -353,12 +391,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backArrow: { fontSize: 32, fontWeight: "300", lineHeight: 36 },
 
   stepIndicator: {
@@ -368,10 +401,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  stepDot: {
-    height: 8,
-    borderRadius: 4,
-  },
+  stepDot: { height: 8, borderRadius: 4 },
 
   stepScroll: {
     paddingHorizontal: 24,
@@ -379,26 +409,11 @@ const styles = StyleSheet.create({
     paddingBottom: 16,
     flexGrow: 1,
   },
-
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 40,
-  },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 40 },
   logoText: { fontSize: 16, fontWeight: "800", letterSpacing: 1 },
+  stepTitle: { fontSize: 28, fontWeight: "700", lineHeight: 38 },
+  stepSub: { fontSize: 15, marginTop: 8, marginBottom: 4 },
 
-  stepTitle: {
-    fontSize: 28,
-    fontWeight: "700",
-    lineHeight: 38,
-  },
-  stepSubtitle: {
-    fontSize: 15,
-    marginTop: 8,
-  },
-
-  // 역할 카드
   roleCard: {
     flexDirection: "row",
     alignItems: "center",
@@ -418,12 +433,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  roleRadioInner: {
-    width: 10,
-    height: 10,
-    borderRadius: 5,
-    backgroundColor: "#FFFFFF",
-  },
+  roleRadioInner: { width: 10, height: 10, borderRadius: 5, backgroundColor: "#FFFFFF" },
 
   footer: {
     paddingHorizontal: 24,

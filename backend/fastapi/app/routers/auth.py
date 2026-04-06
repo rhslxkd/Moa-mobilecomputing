@@ -15,6 +15,7 @@ from app.schemas.auth import (
     TokenResponse,
     MessageResponse,
     UsernameResponse,
+    UserProfileResponse,
 )
 import app.services.auth as auth_service
 
@@ -100,6 +101,14 @@ def find_password_send_otp(req: FindPasswordRequest):
 def find_password_verify(req: FindPasswordVerifyRequest):
     """OTP 검증 후 비밀번호 재설정용 토큰 반환."""
     return auth_service.find_password_verify_otp(req)
+
+
+# ── 내 프로필 조회 ────────────────────────────────────────
+
+@router.get("/me", response_model=UserProfileResponse)
+def get_me(token: str = Depends(bearer_token)):
+    """내 프로필 + 소속 정보 조회."""
+    return auth_service.get_me(token)
 
 
 # ── 비밀번호 재설정 ────────────────────────────────────────

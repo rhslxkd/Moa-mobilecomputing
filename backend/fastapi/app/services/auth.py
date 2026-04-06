@@ -49,8 +49,6 @@ def sign_up(req: SignUpRequest) -> None:
     """계정 생성 + 이메일 인증 OTP 발송."""
     _check_username_available(req.username)
 
-    # 미인증 상태로 유저 생성. username·약관 동의는 user_metadata에 보관했다가
-    # verify_signup_email() 에서 profiles 삽입 시 사용.
     try:
         create_response = supabase_admin.auth.admin.create_user(
             {
@@ -271,6 +269,44 @@ def find_password_verify_otp(req: FindPasswordVerifyRequest) -> TokenResponse:
         access_token=session.access_token,
         refresh_token=session.refresh_token,
     )
+
+
+# ── 내 프로필 조회 ────────────────────────────────────────
+
+def get_me(token: str):
+    """토큰으로 내 프로필 + 소속 정보 반환."""
+    user = _get_user_from_token(token)
+
+    profile = (
+        supabase_admin.table("profiles")
+        .select("username, first_name, last_name, onboarding_completed")
+        .eq("id", user.id)
+        .single()
+        .execute()
+    )
+    p = profile.data or {}
+
+    affiliation = (
+        supabase_admin.table("user_affiliations")
+        .select("affiliation_type, organization_name, department, student_id")
+        .eq("user_id", user.id)
+        .limit(1)
+        .execute()
+    )
+    a = affiliation.data[0] if affiliation.data else {}
+
+    return {
+        "id": user.id,
+        "username": p.get("username", ""),
+        "first_name": p.get("first_name", ""),
+        "last_name": p.get("last_name", ""),
+        "email": user.email or "",
+        "affiliation_type": a.get("affiliation_type"),
+        "organization_name": a.get("organization_name"),
+        "department": a.get("department"),
+        "student_id": a.get("student_id"),
+        "onboarding_completed": p.get("onboarding_completed", False),
+    }
 
 
 # ── 비밀번호 재설정 ────────────────────────────────────────

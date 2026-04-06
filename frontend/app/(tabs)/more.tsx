@@ -10,6 +10,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/contexts/AuthContext";
 import OptionSheet, { MORE_OPTIONS } from "@/components/modals/OptionSheet";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
@@ -38,12 +39,19 @@ function MenuItem({ label, onPress, showChevron = true, isDestructive = false }:
 export default function MoreScreen() {
   const C = useTheme();
   const router = useRouter();
+  const { user, logout } = useAuth();
   const [optionOpen, setOptionOpen] = useState(false);
+
+  // 프로필 표시용 값
+  const displayName = user?.fullName || user?.username || "-";
+  const avatarChar = displayName.charAt(0);
+  const affiliationDetail = [user?.organizationName, user?.department, user?.studentId]
+    .filter(Boolean).join(" · ");
 
   const handleLogout = () => {
     Alert.alert("로그아웃", "정말 로그아웃 하시겠어요?", [
       { text: "취소", style: "cancel" },
-      { text: "로그아웃", style: "destructive", onPress: () => {} },
+      { text: "로그아웃", style: "destructive", onPress: () => { logout(); router.replace("/(onboarding)/signin" as any); } },
     ]);
   };
 
@@ -70,18 +78,17 @@ export default function MoreScreen() {
         <View style={[styles.profileCard, { backgroundColor: C.primary }]}>
           <View style={styles.profileLeft}>
             <View style={[styles.avatar, { backgroundColor: "rgba(255,255,255,0.3)" }]}>
-              <Text style={styles.avatarText}>박</Text>
+              <Text style={styles.avatarText}>{avatarChar}</Text>
             </View>
           </View>
           <View style={styles.profileInfo}>
             <View style={styles.profileNameRow}>
-              <Text style={styles.profileName}>박지민</Text>
-              <View style={styles.projectBadge}>
-                <Text style={styles.projectBadgeText}>3개 프로젝트 참여중</Text>
-              </View>
+              <Text style={styles.profileName}>{displayName}</Text>
             </View>
-            <Text style={styles.profileEmail}>ccome3@cau.ac.kr</Text>
-            <Text style={styles.profileDetail}>중앙대학교 · 예술공학부 · 20271234</Text>
+            <Text style={styles.profileEmail}>{user?.email ?? "-"}</Text>
+            {!!affiliationDetail && (
+              <Text style={styles.profileDetail}>{affiliationDetail}</Text>
+            )}
           </View>
         </View>
 

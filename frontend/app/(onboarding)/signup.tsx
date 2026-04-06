@@ -1,18 +1,10 @@
 /**
  * app/(onboarding)/signup.tsx
  *
- * 피그마 SignUp 화면 기반 — 2단계 회원가입
- *
- * Step 1: 이용약관 및 정책
- *   - 전체 동의하기
- *   - (필수) 서비스 이용약관 동의
- *   - (필수) 개인정보 수집 및 이용 동의
- *   - (선택) 마케팅 수신 정보 동의
- *   - 약관 상세 모달
- *
- * Step 2: 이메일, 아이디, 비밀번호 설정
- *   - 이메일, 아이디, 비밀번호, 비밀번호 확인
- *   - 완료 → /(tabs) 이동
+ * 3단계 회원가입
+ * Step 1: 이용약관 동의
+ * Step 2: 이메일·아이디·비밀번호 입력 → POST /auth/signup (OTP 발송)
+ * Step 3: 이메일 OTP 인증 → POST /auth/signup/verify-email → 토큰 저장 → usersetup
  */
 
 import React, { useState } from "react";
@@ -27,15 +19,15 @@ import {
   Modal,
   Pressable,
   Keyboard,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
-import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import InputBox from "@/components/common/InputBox";
 import Button from "@/components/common/Button";
-
 import MoaLogo from "@/components/common/MoaLogo";
+import { AuthAPI, TokenStore } from "@/services/api";
 
 // ── 약관 체크 아이템 ────────────────────────
 interface TermItemProps {
@@ -48,11 +40,9 @@ interface TermItemProps {
 
 function TermItem({ checked, label, required, onToggle, onDetail }: TermItemProps) {
   const C = useTheme();
-
   return (
     <View style={styles.termRow}>
       <TouchableOpacity onPress={onToggle} activeOpacity={0.7} style={styles.termLeft}>
-        {/* 체크 원 */}
         <View
           style={[
             styles.termCircle,
@@ -71,8 +61,6 @@ function TermItem({ checked, label, required, onToggle, onDetail }: TermItemProp
           {" "}{label}
         </Text>
       </TouchableOpacity>
-
-      {/* 상세 보기 */}
       <TouchableOpacity onPress={onDetail} activeOpacity={0.7} style={styles.termDetailBtn}>
         <Text style={[styles.termChevron, { color: C.textMuted }]}>›</Text>
       </TouchableOpacity>
@@ -81,27 +69,23 @@ function TermItem({ checked, label, required, onToggle, onDetail }: TermItemProp
 }
 
 // ── 약관 상세 모달 ──────────────────────────
-interface TermDetailModalProps {
+function TermDetailModal({
+  visible,
+  title,
+  onClose,
+}: {
   visible: boolean;
   title: string;
   onClose: () => void;
-}
-
-function TermDetailModal({ visible, title, onClose }: TermDetailModalProps) {
+}) {
   const C = useTheme();
-
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
-      <Pressable
-        style={[styles.modalBackdrop, { backgroundColor: C.bgOverlay }]}
-        onPress={onClose}
-      >
+      <Pressable style={[styles.modalBackdrop, { backgroundColor: C.bgOverlay }]} onPress={onClose}>
         <Pressable style={[styles.modalCard, { backgroundColor: C.bgCard }]}>
           <Text style={[styles.modalTitle, { color: C.text }]}>{title}</Text>
           <View style={[styles.modalContent, { backgroundColor: C.bg, borderColor: C.border }]}>
-            <Text style={[styles.modalContentText, { color: C.textMuted }]}>
-              이용약관 상세
-            </Text>
+            <Text style={[styles.modalContentText, { color: C.textMuted }]}>이용약관 상세</Text>
           </View>
           <TouchableOpacity
             onPress={onClose}
@@ -117,17 +101,15 @@ function TermDetailModal({ visible, title, onClose }: TermDetailModalProps) {
 }
 
 // ── Step 1: 이용약관 ───────────────────────
-interface Step1Props {
-  onNext: () => void;
+interface TermsData {
+  service: boolean;
+  privacy: boolean;
+  marketing: boolean;
 }
 
-function Step1({ onNext }: Step1Props) {
+function Step1({ onNext }: { onNext: (terms: TermsData) => void }) {
   const C = useTheme();
-  const [terms, setTerms] = useState({
-    service: false,
-    privacy: false,
-    marketing: false,
-  });
+  const [terms, setTerms] = useState<TermsData>({ service: false, privacy: false, marketing: false });
   const [detailModal, setDetailModal] = useState<string | null>(null);
 
   const allRequired = terms.service && terms.privacy;
@@ -138,31 +120,20 @@ function Step1({ onNext }: Step1Props) {
     setTerms({ service: next, privacy: next, marketing: next });
   };
 
-  const toggle = (key: keyof typeof terms) => {
+  const toggle = (key: keyof TermsData) =>
     setTerms((prev) => ({ ...prev, [key]: !prev[key] }));
-  };
 
   return (
     <>
-      <ScrollView
-        contentContainerStyle={styles.stepScroll}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 로고 */}
+      <ScrollView contentContainerStyle={styles.stepScroll} showsVerticalScrollIndicator={false}>
         <View style={styles.logoRow}>
           <MoaLogo size={36} />
           <Text style={[styles.logoText, { color: C.primary }]}>MOA</Text>
         </View>
 
-        {/* 타이틀 */}
         <Text style={[styles.stepTitle, { color: C.text }]}>이용약관 및 정책</Text>
 
-        {/* 전체 동의 */}
-        <TouchableOpacity
-          onPress={toggleAll}
-          activeOpacity={0.7}
-          style={styles.allAgreeRow}
-        >
+        <TouchableOpacity onPress={toggleAll} activeOpacity={0.7} style={styles.allAgreeRow}>
           <View
             style={[
               styles.termCircle,
@@ -179,7 +150,6 @@ function Step1({ onNext }: Step1Props) {
 
         <View style={[styles.separator, { backgroundColor: C.border }]} />
 
-        {/* 약관 항목들 */}
         <View style={styles.termList}>
           <TermItem
             checked={terms.service}
@@ -205,16 +175,10 @@ function Step1({ onNext }: Step1Props) {
         </View>
       </ScrollView>
 
-      {/* 하단 버튼 */}
       <View style={[styles.footer, { backgroundColor: C.bg }]}>
-        <Button
-          label="다음"
-          onPress={onNext}
-          disabled={!allRequired}
-        />
+        <Button label="다음" onPress={() => onNext(terms)} disabled={!allRequired} />
       </View>
 
-      {/* 약관 상세 모달 */}
       <TermDetailModal
         visible={detailModal !== null}
         title={detailModal ?? ""}
@@ -225,11 +189,13 @@ function Step1({ onNext }: Step1Props) {
 }
 
 // ── Step 2: 계정 설정 ──────────────────────
-interface Step2Props {
-  onComplete: () => void;
-}
-
-function Step2({ onComplete }: Step2Props) {
+function Step2({
+  termsData,
+  onOtpSent,
+}: {
+  termsData: TermsData;
+  onOtpSent: (email: string) => void;
+}) {
   const C = useTheme();
 
   const [email, setEmail] = useState("");
@@ -237,54 +203,66 @@ function Step2({ onComplete }: Step2Props) {
   const [password, setPassword] = useState("");
   const [pwCheck, setPwCheck] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const [errors, setErrors] = useState({
-    email: "", id: "", password: "", pwCheck: "",
-  });
+  const [errors, setErrors] = useState({ email: "", id: "", password: "", pwCheck: "" });
 
   const validate = () => {
     const next = { email: "", id: "", password: "", pwCheck: "" };
     let ok = true;
 
     if (!email.trim()) {
-      next.email = "이메일을 입력해주세요.";
-      ok = false;
+      next.email = "이메일을 입력해주세요."; ok = false;
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      next.email = "올바른 이메일 형식이 아닙니다.";
-      ok = false;
+      next.email = "올바른 이메일 형식이 아닙니다."; ok = false;
     }
     if (!id.trim()) {
-      next.id = "아이디를 입력해주세요.";
-      ok = false;
+      next.id = "아이디를 입력해주세요."; ok = false;
+    } else if (id.length < 3 || id.length > 20) {
+      next.id = "아이디는 3~20자여야 합니다."; ok = false;
+    } else if (!/^[a-zA-Z0-9_-]+$/.test(id)) {
+      next.id = "아이디는 영문, 숫자, _  -  만 사용 가능합니다."; ok = false;
     }
     if (!password) {
-      next.password = "비밀번호를 입력해주세요.";
-      ok = false;
+      next.password = "비밀번호를 입력해주세요."; ok = false;
     } else if (password.length < 8) {
-      next.password = "비밀번호는 8자 이상이어야 합니다.";
-      ok = false;
+      next.password = "비밀번호는 8자 이상이어야 합니다."; ok = false;
     }
     if (!pwCheck) {
-      next.pwCheck = "비밀번호를 한 번 더 입력해주세요.";
-      ok = false;
+      next.pwCheck = "비밀번호를 한 번 더 입력해주세요."; ok = false;
     } else if (password !== pwCheck) {
-      next.pwCheck = "비밀번호가 일치하지 않습니다.";
-      ok = false;
+      next.pwCheck = "비밀번호가 일치하지 않습니다."; ok = false;
     }
 
     setErrors(next);
     return ok;
   };
 
-  const handleComplete = () => {
+  const handleSignup = async () => {
     if (!validate()) return;
+    Keyboard.dismiss();
     setLoading(true);
-    Keyboard.dismiss(); // ✅ 고스트 키보드 방지용 강제 닫기
-    // TODO: 실제 회원가입 API 연결
-    setTimeout(() => {
+
+    try {
+      await AuthAPI.signup({
+        username: id.trim(),
+        email: email.trim(),
+        password,
+        terms_agreed: termsData.service,
+        privacy_agreed: termsData.privacy,
+        marketing_agreed: termsData.marketing,
+      });
+      onOtpSent(email.trim());
+    } catch (err: any) {
+      const msg = err?.message ?? "회원가입에 실패했습니다.";
+      if (msg.toLowerCase().includes("email") || msg.includes("이메일")) {
+        setErrors((e) => ({ ...e, email: msg }));
+      } else if (msg.toLowerCase().includes("username") || msg.includes("아이디")) {
+        setErrors((e) => ({ ...e, id: msg }));
+      } else {
+        Alert.alert("회원가입 오류", msg);
+      }
+    } finally {
       setLoading(false);
-      onComplete();
-    }, 800);
+    }
   };
 
   return (
@@ -294,18 +272,15 @@ function Step2({ onComplete }: Step2Props) {
         showsVerticalScrollIndicator={false}
         keyboardShouldPersistTaps="handled"
       >
-        {/* 로고 */}
         <View style={styles.logoRow}>
           <MoaLogo size={36} />
           <Text style={[styles.logoText, { color: C.primary }]}>MOA</Text>
         </View>
 
-        {/* 타이틀 */}
         <Text style={[styles.stepTitle, { color: C.text }]}>
           이메일, 아이디, 비밀번호를{"\n"}설정해주세요.
         </Text>
 
-        {/* 입력 폼 */}
         <View style={styles.form}>
           <InputBox
             label="이메일"
@@ -320,7 +295,7 @@ function Step2({ onComplete }: Step2Props) {
           />
           <InputBox
             label="아이디"
-            placeholder="아이디를 입력해주세요."
+            placeholder="아이디를 입력해주세요. (영문·숫자·_-)"
             value={id}
             onChangeText={(t) => { setId(t); setErrors((e) => ({ ...e, id: "" })); }}
             error={errors.id}
@@ -349,14 +324,65 @@ function Step2({ onComplete }: Step2Props) {
             textContentType="oneTimeCode"
             autoCapitalize="none"
             returnKeyType="done"
-            onSubmitEditing={handleComplete}
+            onSubmitEditing={handleSignup}
           />
         </View>
       </ScrollView>
 
-      {/* 하단 버튼 */}
       <View style={[styles.footer, { backgroundColor: C.bg }]}>
-        <Button label="완료" onPress={handleComplete} loading={loading} />
+        <Button label="인증번호 받기" onPress={handleSignup} loading={loading} />
+      </View>
+    </>
+  );
+}
+
+// ── Step 3: 이메일 OTP 인증 ──────────────────
+function Step3({ email, onVerified }: { email: string; onVerified: () => void }) {
+  const C = useTheme();
+  const [otp, setOtp] = useState("");
+  const [otpError, setOtpError] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleVerify = async () => {
+    if (!otp.trim()) { setOtpError("인증번호를 입력해주세요."); return; }
+    setLoading(true);
+    try {
+      const data = await AuthAPI.verifyEmail({ email, token: otp.trim() });
+      TokenStore.set(data.access_token);
+      onVerified();
+    } catch (err: any) {
+      setOtpError(err?.message ?? "인증번호가 올바르지 않습니다.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <ScrollView contentContainerStyle={styles.stepScroll} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+        <View style={styles.logoRow}>
+          <MoaLogo size={36} />
+          <Text style={[styles.logoText, { color: C.primary }]}>MOA</Text>
+        </View>
+        <Text style={[styles.stepTitle, { color: C.text }]}>이메일 인증</Text>
+        <Text style={[styles.stepSub, { color: C.textMuted }]}>
+          {email}{"\n"}으로 발송된 인증번호를 입력해주세요.
+        </Text>
+        <View style={{ marginTop: 32 }}>
+          <InputBox
+            label="인증번호"
+            placeholder="123456"
+            value={otp}
+            onChangeText={(t) => { setOtp(t); setOtpError(""); }}
+            error={otpError}
+            keyboardType="number-pad"
+            returnKeyType="done"
+            onSubmitEditing={handleVerify}
+          />
+        </View>
+      </ScrollView>
+      <View style={[styles.footer, { backgroundColor: C.bg }]}>
+        <Button label="인증 완료" onPress={handleVerify} loading={loading} />
       </View>
     </>
   );
@@ -366,7 +392,16 @@ function Step2({ onComplete }: Step2Props) {
 export default function SignUpScreen() {
   const C = useTheme();
   const router = useRouter();
-  const [step, setStep] = useState<1 | 2>(1);
+  const [step, setStep] = useState<1 | 2 | 3>(1);
+  const [termsData, setTermsData] = useState<TermsData>({ service: false, privacy: false, marketing: false });
+  const [signupEmail, setSignupEmail] = useState("");
+
+  const totalSteps = 3;
+
+  const handleBack = () => {
+    if (step === 1) router.back();
+    else setStep((s) => (s - 1) as 1 | 2 | 3);
+  };
 
   return (
     <KeyboardAvoidingView
@@ -374,19 +409,18 @@ export default function SignUpScreen() {
       behavior={Platform.OS === "ios" ? "padding" : undefined}
     >
       <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
-        {/* 뒤로가기 헤더 */}
+        {/* 네비 바 */}
         <View style={[styles.navBar, { borderBottomColor: C.border }]}>
           <TouchableOpacity
-            onPress={() => (step === 2 ? setStep(1) : router.back())}
+            onPress={handleBack}
             activeOpacity={0.7}
             style={styles.backBtn}
           >
             <Text style={[styles.backArrow, { color: C.text }]}>‹</Text>
           </TouchableOpacity>
 
-          {/* 스텝 인디케이터 */}
           <View style={styles.stepIndicator}>
-            {([1, 2] as const).map((s) => (
+            {([1, 2, 3] as const).map((s) => (
               <View
                 key={s}
                 style={[
@@ -403,10 +437,25 @@ export default function SignUpScreen() {
           <View style={styles.backBtn} />
         </View>
 
-        {step === 1 ? (
-          <Step1 onNext={() => setStep(2)} />
-        ) : (
-          <Step2 onComplete={() => router.replace("/(onboarding)/usersetup" as any)} />
+        {step === 1 && (
+          <Step1
+            onNext={(terms) => {
+              setTermsData(terms);
+              setStep(2);
+            }}
+          />
+        )}
+        {step === 2 && (
+          <Step2
+            termsData={termsData}
+            onOtpSent={(email) => { setSignupEmail(email); setStep(3); }}
+          />
+        )}
+        {step === 3 && (
+          <Step3
+            email={signupEmail}
+            onVerified={() => router.replace("/(onboarding)/usersetup" as any)}
+          />
         )}
       </SafeAreaView>
     </KeyboardAvoidingView>
@@ -416,7 +465,6 @@ export default function SignUpScreen() {
 const styles = StyleSheet.create({
   safe: { flex: 1 },
 
-  // 네비 바
   navBar: {
     flexDirection: "row",
     alignItems: "center",
@@ -424,15 +472,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderBottomWidth: 1,
   },
-  backBtn: {
-    width: 44,
-    height: 44,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backArrow: { fontSize: 32, fontWeight: "300", lineHeight: 36 },
 
-  // 스텝 인디케이터
   stepIndicator: {
     flex: 1,
     flexDirection: "row",
@@ -440,33 +482,19 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     gap: 6,
   },
-  stepDot: {
-    height: 8,
-    borderRadius: 4,
-  },
+  stepDot: { height: 8, borderRadius: 4 },
 
-  // 공통 스텝 레이아웃
   stepScroll: {
     paddingHorizontal: 24,
     paddingTop: 32,
     paddingBottom: 16,
     flexGrow: 1,
   },
-  logoRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 6,
-    marginBottom: 40,
-  },
+  logoRow: { flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 40 },
   logoText: { fontSize: 16, fontWeight: "800", letterSpacing: 1 },
-  stepTitle: {
-    fontSize: 26,
-    fontWeight: "700",
-    lineHeight: 36,
-    marginBottom: 36,
-  },
+  stepTitle: { fontSize: 26, fontWeight: "700", lineHeight: 36, marginBottom: 8 },
+  stepSub: { fontSize: 15, lineHeight: 24 },
 
-  // 전체 동의
   allAgreeRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -475,22 +503,10 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   allAgreeText: { fontSize: 16, fontWeight: "600" },
-
   separator: { height: 1, marginBottom: 16 },
-
-  // 약관 목록
   termList: { gap: 4 },
-  termRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 12,
-  },
-  termLeft: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
+  termRow: { flexDirection: "row", alignItems: "center", paddingVertical: 12 },
+  termLeft: { flex: 1, flexDirection: "row", alignItems: "center", gap: 12 },
   termCircle: {
     width: 22,
     height: 22,
@@ -502,47 +518,18 @@ const styles = StyleSheet.create({
   },
   termCheck: { color: "#FFFFFF", fontSize: 12, fontWeight: "700" },
   termLabel: { fontSize: 14, flex: 1 },
-  termDetailBtn: {
-    width: 36,
-    height: 36,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  termDetailBtn: { width: 36, height: 36, alignItems: "center", justifyContent: "center" },
   termChevron: { fontSize: 20, fontWeight: "300" },
 
-  // 약관 상세 모달
-  modalBackdrop: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    paddingHorizontal: 24,
-  },
-  modalCard: {
-    width: "100%",
-    borderRadius: 20,
-    padding: 24,
-    gap: 16,
-  },
+  modalBackdrop: { flex: 1, alignItems: "center", justifyContent: "center", paddingHorizontal: 24 },
+  modalCard: { width: "100%", borderRadius: 20, padding: 24, gap: 16 },
   modalTitle: { fontSize: 16, fontWeight: "700" },
-  modalContent: {
-    height: 280,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: "center",
-    justifyContent: "center",
-  },
+  modalContent: { height: 280, borderRadius: 12, borderWidth: 1, alignItems: "center", justifyContent: "center" },
   modalContentText: { fontSize: 14 },
-  modalCloseBtn: {
-    borderRadius: 12,
-    paddingVertical: 14,
-    alignItems: "center",
-  },
+  modalCloseBtn: { borderRadius: 12, paddingVertical: 14, alignItems: "center" },
   modalCloseBtnText: { fontSize: 15, fontWeight: "600" },
 
-  // 폼
   form: { gap: 20 },
-
-  // 하단 버튼
   footer: {
     paddingHorizontal: 24,
     paddingBottom: Platform.OS === "ios" ? 16 : 24,
