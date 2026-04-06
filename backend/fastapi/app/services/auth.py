@@ -1,6 +1,8 @@
+import resend
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
 
+from app.core.config import settings
 from app.core.supabase import supabase, supabase_admin
 from app.schemas.auth import (
     SignUpRequest,
@@ -15,6 +17,9 @@ from app.schemas.auth import (
     ResetPasswordRequest,
     TokenResponse,
 )
+from app.services import otp_store
+
+resend.api_key = settings.resend_api_key
 
 
 # ── 내부 헬퍼 ─────────────────────────────────────────────
@@ -229,7 +234,7 @@ def find_id_verify_otp(req: FindIdVerifyRequest) -> str:
 # ── 비밀번호 찾기 ──────────────────────────────────────────
 
 def find_password_send_otp(req: FindPasswordRequest) -> None:
-    """이메일 + username 일치 확인 후 OTP 발송."""
+    """이메일 + username 일치 확인 후 6자리 OTP를 Resend로 발송."""
     result = (
         supabase_admin.table("profiles")
         .select("id")
@@ -246,42 +251,49 @@ def find_password_send_otp(req: FindPasswordRequest) -> None:
     if not auth_user.user or auth_user.user.email != req.email:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="아이디 또는 이메일이 올바르지 않습니다.")
 
+    otp = otp_store.generate_otp(req.email)
+
     try:
-        supabase.auth.sign_in_with_otp(
-            {"email": req.email, "options": {"should_create_user": False}}
-        )
-    except AuthApiError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+        resend.Emails.send({
+            "from": settings.resend_from_email,
+            "to": req.email,
+            "subject": "[MOA] 비밀번호 재설정 인증번호",
+            "html": (
+                f"<p>안녕하세요, MOA입니다.</p>"
+                f"<p>비밀번호 재설정 인증번호: <strong>{otp}</strong></p>"
+                f"<p>인증번호는 10분간 유효합니다.</p>"
+            ),
+        })
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"이메일 발송에 실패했습니다: {e}")
 
 
 def find_password_verify_otp(req: FindPasswordVerifyRequest) -> TokenResponse:
-    """OTP 검증 후 비밀번호 재설정용 토큰 반환."""
-    try:
-        response = supabase.auth.verify_otp(
-            {"email": req.email, "token": req.token, "type": "email"}
-        )
-    except AuthApiError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않습니다.")
+    """6자리 OTP 검증 후 비밀번호 재설정용 토큰 반환."""
+    if not otp_store.verify_otp(req.email, req.token):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않거나 만료되었습니다.")
 
-    session = response.session
-    if not session:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증에 실패했습니다.")
+    # 이메일로 user_id 조회
+    users = supabase_admin.auth.admin.list_users()
+    user = next((u for u in users if u.email == req.email), None)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
 
-    return TokenResponse(
-        access_token=session.access_token,
-        refresh_token=session.refresh_token,
-    )
+    reset_token = otp_store.create_reset_token(user.id)
+    return TokenResponse(access_token=reset_token, refresh_token="")
 
 
 # ── 비밀번호 재설정 ────────────────────────────────────────
 
 def reset_password(req: ResetPasswordRequest, token: str) -> None:
-    """OTP 인증으로 발급받은 토큰으로 비밀번호 변경."""
-    user = _get_user_from_token(token)
+    """find-password/verify 에서 받은 리셋 토큰으로 비밀번호 변경."""
+    user_id = otp_store.consume_reset_token(token)
+    if not user_id:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="유효하지 않거나 만료된 토큰입니다.")
 
     try:
         supabase_admin.auth.admin.update_user_by_id(
-            user.id, {"password": req.new_password}
+            user_id, {"password": req.new_password}
         )
     except AuthApiError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
