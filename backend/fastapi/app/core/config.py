@@ -6,6 +6,9 @@ class Settings(BaseSettings):
     supabase_anon_key: str
     supabase_service_role_key: str
 
+    resend_api_key: str
+    resend_from_email: str = "MOA <noreply@moa.com>"
+
     class Config:
         env_file = ".env"
 
