@@ -1,24 +1,68 @@
-# 환경변수
+# --- General ---
 .env
+.env.*
+.env*.local
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.temp
+*.pem
 
-# Python
+# --- Python / FastAPI ---
 __pycache__/
 *.pyc
 *.pyo
+*.pyd
 .venv/
 venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 *.egg-info/
 dist/
 build/
+*.sqlite
+*.db
 
-# Node
+# --- Node / React Native (Expo) ---
 node_modules/
 .expo/
+dist/
+web-build/
+expo-env.d.ts
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+.npm/
+.yarn/cache/
+.pnp.*
+*.tsbuildinfo
 
-# IDE
+# --- Native / Metro ---
+.kotlin/
+*.orig.*
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+.metro-health-check*
+
+# --- Generated Native Folders ---
+/ios
+/android
+
+# --- IDEs ---
 .vscode/
 .idea/
+*.swp
+*.swo
+.project
+.settings/
 
-# OS
-.DS_Store
-Thumbs.db
+# --- Claude ---
+.claude
