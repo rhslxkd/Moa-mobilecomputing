@@ -192,40 +192,47 @@ def setup_affiliation(req: SetupAffiliationRequest, token: str) -> None:
 
 def find_id_send_otp(req: FindIdRequest) -> None:
     """이메일로 OTP 발송. 가입된 이메일이 아니면 404."""
-    # 가입 여부 확인 (profiles 테이블 기준으로는 email이 없으므로 admin API 사용)
     users = supabase_admin.auth.admin.list_users()
     email_exists = any(u.email == req.email for u in users)
     if not email_exists:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="가입되지 않은 이메일입니다.")
 
+    otp = otp_store.generate_otp(req.email)
+
     try:
-        supabase.auth.sign_in_with_otp(
-            {"email": req.email, "options": {"should_create_user": False}}
-        )
-    except AuthApiError as e:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+        resend.Emails.send({
+            "from": settings.resend_from_email,
+            "to": req.email,
+            "subject": "[MOA] 아이디 찾기 인증번호",
+            "html": (
+                f"<p>안녕하세요, MOA입니다.</p>"
+                f"<p>아이디 찾기 인증번호: <strong>{otp}</strong></p>"
+                f"<p>인증번호는 10분간 유효합니다.</p>"
+            ),
+        })
+    except Exception as e:
+        raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"이메일 발송에 실패했습니다: {e}")
 
 
 def find_id_verify_otp(req: FindIdVerifyRequest) -> str:
     """OTP 검증 후 username 반환."""
-    try:
-        response = supabase.auth.verify_otp(
-            {"email": req.email, "token": req.token, "type": "email"}
-        )
-    except AuthApiError:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않습니다.")
+    if not otp_store.verify_otp(req.email, req.token):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않거나 만료되었습니다.")
 
-    user = response.user
-    if not user:
-        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증에 실패했습니다.")
+    users = supabase_admin.auth.admin.list_users()
+    matched = next((u for u in users if u.email == req.email), None)
+    if not matched:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
 
     result = (
         supabase_admin.table("profiles")
         .select("username")
-        .eq("id", user.id)
+        .eq("id", matched.id)
         .limit(1)
         .execute()
     )
+    if not result.data:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
     return result.data[0]["username"]
 
 
