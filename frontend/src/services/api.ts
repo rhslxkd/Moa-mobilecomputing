@@ -51,8 +51,8 @@ async function request<T>(
       typeof detail === "string"
         ? detail
         : Array.isArray(detail)
-        ? detail.map((d: any) => d.msg).join(", ")
-        : "서버 오류가 발생했습니다.";
+          ? detail.map((d: any) => d.msg).join(", ")
+          : "서버 오류가 발생했습니다.";
     throw new Error(message);
   }
 

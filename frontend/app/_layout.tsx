@@ -35,67 +35,41 @@ export default function RootLayout() {
       <AuthProvider>
       <ProjectProvider>
         <StatusBar style={isDark ? "light" : "dark"} />
-        <Stack screenOptions={{ headerShown: false }}>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            gestureEnabled: true,
+            gestureDirection: "horizontal",
+            animation: "slide_from_right",
+          }}
+        >
           {/* 앱 진입점 */}
-          <Stack.Screen name="index" options={{ headerShown: false }} />
-          {/* 온보딩 화면들 */}
-          <Stack.Screen name="(onboarding)/Splashscreen" options={{ headerShown: false }} />
-          <Stack.Screen name="(onboarding)/signin" options={{ headerShown: false }} />
-          <Stack.Screen name="(onboarding)/signup" options={{ headerShown: false }} />
-          <Stack.Screen name="(onboarding)/usersetup" options={{ headerShown: false }} />
-          <Stack.Screen name="(onboarding)/welcome" options={{ headerShown: false, gestureEnabled: false }} />
-          {/* 탭바 화면들 */}
-          <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          {/* 탭 밖 세부 화면들 */}
-          <Stack.Screen
-            name="(screens)/chat/[projectId]"
-            options={{
-              headerShown: false,
-              presentation: "card",  // 슬라이드 인
-            }}
-          />
-          <Stack.Screen
-            name="(screens)/chat/ChatMenu"
-            options={{
-              headerShown: false,
-              presentation: "card",
-            }}
-          />
-          <Stack.Screen
-            name="(screens)/chat/ChatArchive"
-            options={{
-              headerShown: false,
-              presentation: "card",
-            }}
-          />
-          <Stack.Screen
-            name="(screens)/meeting/index"
-            options={{
-              headerShown: false,
-              presentation: "fullScreenModal",
-            }}
-          />
-          <Stack.Screen
-            name="(screens)/meeting/recording"
-            options={{
-              headerShown: false,
-              presentation: "fullScreenModal",
-            }}
-          />
-          <Stack.Screen
-            name="(screens)/qr/scan"
-            options={{
-              headerShown: false,
-              presentation: "fullScreenModal",
-            }}
-          />
-          <Stack.Screen
-            name="(screens)/report/[projectId]"
-            options={{
-              headerShown: false,
-              presentation: "card",
-            }}
-          />
+          <Stack.Screen name="index" />
+          {/* 온보딩 */}
+          <Stack.Screen name="(onboarding)/Splashscreen" />
+          <Stack.Screen name="(onboarding)/signin" />
+          <Stack.Screen name="(onboarding)/signup" />
+          <Stack.Screen name="(onboarding)/usersetup" />
+          <Stack.Screen name="(onboarding)/find-account" />
+          <Stack.Screen name="(onboarding)/welcome" options={{ gestureEnabled: false }} />
+          {/* 탭바 */}
+          <Stack.Screen name="(tabs)" options={{ gestureEnabled: false }} />
+          {/* 채팅 */}
+          <Stack.Screen name="(screens)/chat/[projectId]" options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/chat/ChatMenu"    options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/chat/ChatArchive" options={{ presentation: "card" }} />
+          {/* 프로젝트 */}
+          <Stack.Screen name="(screens)/project/[projectId]" options={{ presentation: "card" }} />
+          {/* 투두 */}
+          <Stack.Screen name="(screens)/todo/add"           options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/todo/[projectId]"   options={{ presentation: "card" }} />
+          {/* 회의 */}
+          <Stack.Screen name="(screens)/meeting/index"     options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
+          <Stack.Screen name="(screens)/meeting/recording" options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
+          {/* QR */}
+          <Stack.Screen name="(screens)/qr/scan" options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
+          {/* 리포트 */}
+          <Stack.Screen name="(screens)/report/[projectId]" options={{ presentation: "card" }} />
           <Stack.Screen name="+not-found" />
         </Stack>
       </ProjectProvider>

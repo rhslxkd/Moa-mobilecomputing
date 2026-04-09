@@ -138,7 +138,7 @@ export default function DashboardScreen() {
       <View style={s.header}>
         <View style={s.headerLeft}>
           <View style={s.logoWrapper}>
-            <MoaLogo />
+            <MoaLogo size={48} />
           </View>
           <Text style={s.headerTitle}>
             <Text style={{ fontWeight: "800" }}>{displayName}</Text>님의 프로젝트
@@ -189,7 +189,10 @@ export default function DashboardScreen() {
                 setCurrentProject(project);
                 router.push(`/(screens)/chat/${project.id}`);
               }}
-              onTodo={() => { }}
+              onTodo={() => {
+                setCurrentProject(project);
+                router.push(`/(screens)/todo/${project.id}` as any);
+              }}
             />
           ))}
         </ScrollView>
@@ -255,7 +258,7 @@ export default function DashboardScreen() {
               <View style={s.header}>
                 <View style={[s.headerLeft, { flex: 1 }]}>
                   <View style={[s.logoWrapper, { marginRight: 8 }]}>
-                    <MoaLogo />
+                    <MoaLogo size={36} />
                   </View>
                   <TextInput
                     style={{ flex: 1, fontSize: 16, color: C.text }}
@@ -472,8 +475,8 @@ function makeStyles(C: Theme, isDark: boolean, insets?: any) {
       backgroundColor: C.bgCard,
       borderBottomWidth: 1,
       borderBottomColor: C.border,
-      paddingHorizontal: 24,
-      paddingVertical: 18,
+      paddingHorizontal: 20,
+      paddingVertical: 10,
     },
     headerLeft: {
       flexDirection: "row",
@@ -492,7 +495,7 @@ function makeStyles(C: Theme, isDark: boolean, insets?: any) {
       marginTop: -2,
     },
     headerTitle: {
-      fontSize: 18,
+      fontSize: 16,
       color: C.text,
       marginLeft: 4,
     },
@@ -502,8 +505,8 @@ function makeStyles(C: Theme, isDark: boolean, insets?: any) {
       gap: 4,
     },
     iconBtn: {
-      width: 38,
-      height: 38,
+      width: 34,
+      height: 34,
       alignItems: "center",
       justifyContent: "center",
       borderRadius: 10,

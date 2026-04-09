@@ -432,7 +432,7 @@ const styles = StyleSheet.create({
   successUsername: { fontSize: 24, fontWeight: "700" },
   successText: { fontSize: 15, fontWeight: "500", marginTop: 16, marginLeft: 4 },
 
-  inputRow: { flexDirection: "row", alignItems: "stretch", gap: 8, marginBottom: 0 },
+  inputRow: { flexDirection: "row", alignItems: "stretch", gap: 8, marginBottom: 12 },
   sideBtn: { width: 100, borderRadius: 8, alignItems: "center", justifyContent: "center" },
   sideBtnText: { fontSize: 13, fontWeight: "600", letterSpacing: -0.3 },
 });

@@ -5,7 +5,7 @@
  * 회의 시작 / 프로젝트 추가 / 투두 추가 / 파일 업로드
  *
  * 사용법:
- *   <NewItemModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
+ * <NewItemModal isOpen={isOpen} onClose={() => setIsOpen(false)} />
  */
 
 import React, { useState } from "react";
@@ -98,115 +98,119 @@ export default function NewItemModal({ isOpen, onClose, onOpenCreate }: NewItemM
       animationType="slide"
       onRequestClose={handleClose}
     >
-      {/* 배경 딤 */}
-      <Pressable style={[s.backdrop, { backgroundColor: C.bgOverlay }]} onPress={handleClose} />
+      {/* 바텀 시트를 아래로 밀어내기 위한 래퍼 추가 */}
+      <View style={s.modalWrapper}>
 
-      {/* 바텀 시트 */}
-      <View style={[s.sheet, { backgroundColor: C.bgCard }]}>
-        {/* 핸들 */}
-        <View style={s.handleWrap}>
-          <View style={[s.handle, { backgroundColor: C.border }]} />
-        </View>
+        {/* 배경 딤 (절대 위치로 화면 전체를 덮도록 수정) */}
+        <Pressable style={[s.backdrop, { backgroundColor: C.bgOverlay }]} onPress={handleClose} />
 
-        {/* 타이틀 */}
-        <View style={s.titleWrap}>
-          <Text style={[s.title, { color: C.text }]}>무엇을 추가할까요?</Text>
-          <Text style={[s.titleSub, { color: C.textMuted }]}>
-            프로젝트 또는 액션을 선택하세요
-          </Text>
-        </View>
-
-        <ScrollView
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={s.scrollContent}
-        >
-          {/* ── 회의 시작 (강조) ── */}
-          <View>
-            <TouchableOpacity
-              style={[
-                s.actionRow,
-                { backgroundColor: C.bgMuted, borderColor: C.border },
-                expanded === "meeting" && {
-                  backgroundColor: C.primaryBg,
-                  borderColor: C.primary + "60",
-                },
-              ]}
-              onPress={() =>
-                setExpanded((prev) => (prev === "meeting" ? null : "meeting"))
-              }
-              activeOpacity={0.7}
-            >
-              <Text style={s.actionEmoji}>🎙</Text>
-              <View style={s.actionInfo}>
-                <Text style={[
-                  s.actionLabel,
-                  { color: expanded === "meeting" ? C.primary : C.text },
-                ]}>
-                  회의 시작
-                </Text>
-                <Text style={[s.actionSub, { color: C.textMuted }]}>
-                  어느 프로젝트의 회의인지 선택
-                </Text>
-              </View>
-              <Text style={[
-                s.chevron,
-                { color: expanded === "meeting" ? C.primary : C.textMuted },
-                expanded === "meeting" && s.chevronDown,
-              ]}>
-                ›
-              </Text>
-            </TouchableOpacity>
-
-            {/* 프로젝트 선택 피커 */}
-            {expanded === "meeting" && (
-              <View style={[s.picker, { backgroundColor: C.bgMuted, borderColor: C.border }]}>
-                <Text style={[s.pickerLabel, { color: C.textMuted }]}>
-                  어느 프로젝트?
-                </Text>
-                {projects.map((project) => (
-                  <ProjectOption
-                    key={project.id}
-                    project={project}
-                    isSelected={selectedId === project.id}
-                    onSelect={() => setSelectedId(project.id)}
-                    C={C}
-                  />
-                ))}
-                {/* 확인 버튼 */}
-                <TouchableOpacity
-                  style={[s.confirmBtn, { backgroundColor: C.primary }]}
-                  onPress={handleStartMeeting}
-                  activeOpacity={0.85}
-                >
-                  <Text style={s.confirmText}>
-                    🎙 {selectedProject?.name} 회의 시작
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
+        {/* 바텀 시트 */}
+        <View style={[s.sheet, { backgroundColor: C.bgCard }]}>
+          {/* 핸들 */}
+          <View style={s.handleWrap}>
+            <View style={[s.handle, { backgroundColor: C.border }]} />
           </View>
 
-          {/* ── 나머지 액션들 ── */}
-          {ACTIONS.map((action) => (
-            <TouchableOpacity
-              key={action.id}
-              style={[s.actionRow, { backgroundColor: C.bgMuted, borderColor: C.border }]}
-              onPress={action.onPress}
-              activeOpacity={0.7}
-            >
-              <Text style={s.actionEmoji}>{action.emoji}</Text>
-              <View style={s.actionInfo}>
-                <Text style={[s.actionLabel, { color: C.text }]}>
-                  {action.label}
+          {/* 타이틀 */}
+          <View style={s.titleWrap}>
+            <Text style={[s.title, { color: C.text }]}>무엇을 추가할까요?</Text>
+            <Text style={[s.titleSub, { color: C.textMuted }]}>
+              프로젝트 또는 액션을 선택하세요
+            </Text>
+          </View>
+
+          <ScrollView
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={s.scrollContent}
+          >
+            {/* ── 회의 시작 (강조) ── */}
+            <View>
+              <TouchableOpacity
+                style={[
+                  s.actionRow,
+                  { backgroundColor: C.bgMuted, borderColor: C.border },
+                  expanded === "meeting" && {
+                    backgroundColor: C.primaryBg,
+                    borderColor: C.primary + "60",
+                  },
+                ]}
+                onPress={() =>
+                  setExpanded((prev) => (prev === "meeting" ? null : "meeting"))
+                }
+                activeOpacity={0.7}
+              >
+                <Text style={s.actionEmoji}>🎙</Text>
+                <View style={s.actionInfo}>
+                  <Text style={[
+                    s.actionLabel,
+                    { color: expanded === "meeting" ? C.primary : C.text },
+                  ]}>
+                    회의 시작
+                  </Text>
+                  <Text style={[s.actionSub, { color: C.textMuted }]}>
+                    어느 프로젝트의 회의인지 선택
+                  </Text>
+                </View>
+                <Text style={[
+                  s.chevron,
+                  { color: expanded === "meeting" ? C.primary : C.textMuted },
+                  expanded === "meeting" && s.chevronDown,
+                ]}>
+                  ›
                 </Text>
-                <Text style={[s.actionSub, { color: C.textMuted }]}>
-                  {action.sub}
-                </Text>
-              </View>
-              <Text style={[s.chevron, { color: C.textMuted }]}>›</Text>
-            </TouchableOpacity>
-          ))}
-        </ScrollView>
+              </TouchableOpacity>
+
+              {/* 프로젝트 선택 피커 */}
+              {expanded === "meeting" && (
+                <View style={[s.picker, { backgroundColor: C.bgMuted, borderColor: C.border }]}>
+                  <Text style={[s.pickerLabel, { color: C.textMuted }]}>
+                    어느 프로젝트?
+                  </Text>
+                  {projects.map((project) => (
+                    <ProjectOption
+                      key={project.id}
+                      project={project}
+                      isSelected={selectedId === project.id}
+                      onSelect={() => setSelectedId(project.id)}
+                      C={C}
+                    />
+                  ))}
+                  {/* 확인 버튼 */}
+                  <TouchableOpacity
+                    style={[s.confirmBtn, { backgroundColor: C.primary }]}
+                    onPress={handleStartMeeting}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.confirmText}>
+                      🎙 {selectedProject?.name} 회의 시작
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+
+            {/* ── 나머지 액션들 ── */}
+            {ACTIONS.map((action) => (
+              <TouchableOpacity
+                key={action.id}
+                style={[s.actionRow, { backgroundColor: C.bgMuted, borderColor: C.border }]}
+                onPress={action.onPress}
+                activeOpacity={0.7}
+              >
+                <Text style={s.actionEmoji}>{action.emoji}</Text>
+                <View style={s.actionInfo}>
+                  <Text style={[s.actionLabel, { color: C.text }]}>
+                    {action.label}
+                  </Text>
+                  <Text style={[s.actionSub, { color: C.textMuted }]}>
+                    {action.sub}
+                  </Text>
+                </View>
+                <Text style={[s.chevron, { color: C.textMuted }]}>›</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </View>
       </View>
     </Modal>
   );
@@ -222,9 +226,9 @@ interface ProjectOptionProps {
 
 function ProjectOption({ project, isSelected, onSelect, C }: ProjectOptionProps) {
   const EMOJI_BG: Record<string, string> = {
-    blue:   C.primaryBg,
+    blue: C.primaryBg,
     purple: C.purpleBg,
-    green:  C.successBg,
+    green: C.successBg,
   };
 
   return (
@@ -263,14 +267,24 @@ function ProjectOption({ project, isSelected, onSelect, C }: ProjectOptionProps)
 // ── 스타일 ────────────────────────────────
 function makeStyles(C: ReturnType<typeof useTheme>) {
   return StyleSheet.create({
-    backdrop: {
+    modalWrapper: {
       flex: 1,
+      justifyContent: "flex-end",
+    },
+    backdrop: {
+      ...StyleSheet.absoluteFillObject, // 둥근 모서리 뒤 빈틈까지 완전히 덮어줍니다.
     },
     sheet: {
-      borderTopLeftRadius: 24,
-      borderTopRightRadius: 24,
+      borderTopLeftRadius: 40,
+      borderTopRightRadius: 40,
       paddingBottom: 40,
       maxHeight: "85%",
+      // 위쪽 방향으로 퍼지는 그림자 추가
+      shadowColor: "#000",
+      shadowOffset: { width: 0, height: -4 },
+      shadowOpacity: 0.15,
+      shadowRadius: 12,
+      elevation: 15,
     },
     handleWrap: {
       alignItems: "center",
