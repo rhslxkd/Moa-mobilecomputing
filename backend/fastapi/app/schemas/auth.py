@@ -115,3 +115,17 @@ class MessageResponse(BaseModel):
 
 class UsernameResponse(BaseModel):
     username: str
+
+
+# ── 내 프로필 조회 ─────────────────────────────────────────
+class UserProfileResponse(BaseModel):
+    id: str
+    username: str
+    first_name: str
+    last_name: str
+    email: str
+    affiliation_type: Optional[str] = None
+    organization_name: Optional[str] = None
+    department: Optional[str] = None
+    student_id: Optional[str] = None
+    onboarding_completed: bool

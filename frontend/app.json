@@ -1,0 +1,28 @@
+{
+  "expo": {
+    "name": "MOA",
+    "slug": "moa",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#29B6E8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.moa.app"
+    },
+    "android": {
+      "package": "com.moa.app"
+    },
+    "scheme": "moa",
+    "plugins": ["expo-router", "expo-splash-screen"],
+    "experiments": {
+      "typedRoutes": false,
+      "newArchEnabled": false
+    }
+  }
+}

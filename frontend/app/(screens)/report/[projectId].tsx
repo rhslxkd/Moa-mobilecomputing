@@ -1,0 +1,269 @@
+/**
+ * app/(screens)/report/[projectId].tsx
+ * 기여도 리포트 — 피그마 디자인 기준
+ */
+
+import React, { useState } from "react";
+import {
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import Svg, { Path } from "react-native-svg";
+import { useTheme } from "@/hooks/useTheme";
+import { useProject } from "@/contexts/ProjectContext";
+import OptionSheet, { REPORT_OPTIONS } from "@/components/modals/OptionSheet";
+import Icon from "@/components/common/Icon";
+import MoaLogo from "@/components/common/MoaLogo";
+
+// ── Mock 데이터 ────────────────────────────
+interface MemberReport {
+  name: string;
+  initial: string;
+  contribution: number;
+  todosDone: number;
+  todosTotal: number;
+}
+
+const MOCK_REPORTS: Record<string, MemberReport[]> = {
+  "1": [
+    { name: "박지민", initial: "박", contribution: 35, todosDone: 8,  todosTotal: 10 },
+    { name: "이지은", initial: "이", contribution: 28, todosDone: 6,  todosTotal: 8  },
+    { name: "김철수", initial: "김", contribution: 20, todosDone: 5,  todosTotal: 7  },
+    { name: "최유진", initial: "최", contribution: 17, todosDone: 4,  todosTotal: 6  },
+  ],
+  "2": [
+    { name: "박지민", initial: "박", contribution: 40, todosDone: 5, todosTotal: 6 },
+    { name: "이지은", initial: "이", contribution: 35, todosDone: 4, todosTotal: 5 },
+    { name: "김철수", initial: "김", contribution: 25, todosDone: 3, todosTotal: 4 },
+  ],
+  "3": [
+    { name: "박지민", initial: "박", contribution: 50, todosDone: 3, todosTotal: 4 },
+    { name: "이지은", initial: "이", contribution: 30, todosDone: 2, todosTotal: 3 },
+    { name: "김철수", initial: "김", contribution: 20, todosDone: 1, todosTotal: 2 },
+  ],
+};
+
+const MOCK_MEETINGS: Record<string, number> = { "1": 8, "2": 5, "3": 3 };
+
+// ── 다운로드 아이콘 ────────────────────────
+function DownloadIcon({ color }: { color: string }) {
+  return (
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3v12M8 11l4 4 4-4" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M5 19h14" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
+  );
+}
+
+// ── 기여도 바 ──────────────────────────────
+function ContribBar({ member, accent, rank }: { member: MemberReport; accent: string; rank: number }) {
+  const C = useTheme();
+  const isFirst = rank === 0;
+  return (
+    <View style={s.contribRow}>
+      <View style={s.contribLeft}>
+        <Text style={[s.rank, { color: isFirst ? accent : C.textMuted }]}>{rank + 1}</Text>
+        <View style={[s.memberAvatar, { backgroundColor: isFirst ? accent + "20" : C.bgMuted }]}>
+          <Text style={[s.memberInitial, { color: isFirst ? accent : C.textSub }]}>{member.initial}</Text>
+        </View>
+        <View>
+          <Text style={[s.memberName, { color: C.text }]}>{member.name}</Text>
+          <Text style={[s.memberTodo, { color: C.textMuted }]}>{member.todosDone}/{member.todosTotal} 완료</Text>
+        </View>
+      </View>
+      <View style={s.contribRight}>
+        <View style={[s.barTrack, { backgroundColor: C.bgMuted }]}>
+          <View style={[s.barFill, { width: `${member.contribution}%` as any, backgroundColor: isFirst ? accent : C.border }]} />
+        </View>
+        <Text style={[s.contribPct, { color: isFirst ? accent : C.textMuted }]}>{member.contribution}%</Text>
+      </View>
+    </View>
+  );
+}
+
+// ── 메인 화면 ──────────────────────────────
+export default function ReportScreen() {
+  const C = useTheme();
+  const router = useRouter();
+  const { projectId } = useLocalSearchParams<{ projectId: string }>();
+  const { projects } = useProject();
+  const [optionOpen, setOptionOpen] = useState(false);
+
+  const project = projects.find((p) => p.id === projectId) ?? projects[0];
+  const members = MOCK_REPORTS[project.id] ?? MOCK_REPORTS["1"];
+  const meetingCount = MOCK_MEETINGS[project.id] ?? 0;
+
+  // 통계 계산
+  const myScore = members[0]?.contribution ?? 0;
+  const teamAvg = Math.round(members.reduce((s, m) => s + m.contribution, 0) / members.length);
+  const myRank = 1;
+
+  return (
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top", "bottom"]}>
+      {/* 흰색 헤더 */}
+      <View style={[s.topBar, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={s.iconBtn} activeOpacity={0.7}>
+          <Icon name="back" size={22} color={C.text} />
+        </TouchableOpacity>
+        <View style={s.topBarTitleWrap}>
+          <MoaLogo size={22} variant="primary" />
+          <Text style={[s.topBarSub, { color: C.textMuted }]}>기여도 리포트 · </Text>
+          <Text style={[s.topBarBold, { color: C.text }]} numberOfLines={1}>{project.name}</Text>
+        </View>
+        <TouchableOpacity onPress={() => setOptionOpen(true)} style={s.iconBtn} activeOpacity={0.7}>
+          <Icon name="settings" size={22} color={C.textSub} />
+        </TouchableOpacity>
+      </View>
+
+      {/* 파란 그라디언트 섹션 */}
+      <LinearGradient
+        colors={["#00A9EC", "#0084FF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={s.header}
+      >
+        {/* 제목 + PDF 버튼 */}
+        <View style={s.headerTitleRow}>
+          <View>
+            <Text style={s.headerProjectName}>{project.name}</Text>
+            <Text style={s.headerTitle}>기여도 리포트</Text>
+          </View>
+          <TouchableOpacity
+            style={s.pdfBtn}
+            activeOpacity={0.85}
+            onPress={() => Alert.alert("PDF 다운로드", "리포트를 PDF로 저장합니다.")}
+          >
+            <DownloadIcon color="#00A9EC" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 통계 4개 카드 */}
+        <View style={s.statRow}>
+          {[
+            { label: "순위",    value: `${myRank}위` },
+            { label: "내 점수", value: `${myScore}` },
+            { label: "팀 평균", value: `${teamAvg}` },
+            { label: "회의 횟수", value: `${meetingCount}회` },
+          ].map((stat) => (
+            <View key={stat.label} style={s.statCard}>
+              <Text style={s.statLabel}>{stat.label}</Text>
+              <Text style={s.statValue}>{stat.value}</Text>
+            </View>
+          ))}
+        </View>
+      </LinearGradient>
+
+      {/* 콘텐츠 */}
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+        <View style={[s.contentCard, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+          <Text style={[s.contentTitle, { color: C.text }]}>팀원별 기여도</Text>
+          <View style={s.contribList}>
+            {members.map((member, idx) => (
+              <ContribBar key={member.name} member={member} accent={project.color} rank={idx} />
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+
+      <OptionSheet
+        isOpen={optionOpen}
+        onClose={() => setOptionOpen(false)}
+        title="기여도 리포트"
+        subtitle={project.name}
+        options={REPORT_OPTIONS(
+          () => Alert.alert("공유", "리포트를 공유했습니다."),
+          () => { Alert.alert("삭제", "리포트가 삭제되었습니다."); router.back(); }
+        )}
+      />
+    </SafeAreaView>
+  );
+}
+
+const s = StyleSheet.create({
+  safe: { flex: 1 },
+
+  // 흰색 상단 바
+  topBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  topBarTitleWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 4 },
+  topBarSub: { fontSize: 15, fontWeight: "400" },
+  topBarBold: { fontSize: 15, fontWeight: "700", flex: 1 },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+
+  // 파란 그라디언트 섹션
+  header: { paddingBottom: 20 },
+
+  headerTitleRow: {
+    flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  headerProjectName: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "500", marginBottom: 4 },
+  headerTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
+  pdfBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+
+  // 통계 카드
+  statRow: {
+    flexDirection: "row",
+    paddingHorizontal: 16,
+    gap: 8,
+  },
+  statCard: {
+    flex: 1,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.5)",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+    gap: 2,
+  },
+  statLabel: { color: "rgba(255,255,255,0.85)", fontSize: 10, fontWeight: "500" },
+  statValue: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
+
+  // 콘텐츠
+  body: { padding: 16, paddingBottom: 40 },
+  contentCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    padding: 16,
+    gap: 14,
+  },
+  contentTitle: { fontSize: 15, fontWeight: "700" },
+
+  // 기여도 바
+  contribList: { gap: 12 },
+  contribRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  contribLeft: { flexDirection: "row", alignItems: "center", gap: 8, width: 150, flexShrink: 0 },
+  rank: { fontSize: 14, fontWeight: "700", width: 16, textAlign: "center" },
+  memberAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  memberInitial: { fontSize: 14, fontWeight: "700" },
+  memberName: { fontSize: 13, fontWeight: "600" },
+  memberTodo: { fontSize: 11, marginTop: 1 },
+  contribRight: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  barTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
+  barFill: { height: "100%", borderRadius: 4 },
+  contribPct: { fontSize: 12, fontWeight: "700", width: 36, textAlign: "right" },
+});
