@@ -51,7 +51,10 @@ export type IconName =
   | "vote"
   | "phone"
   | "robot"
-  | "pin";
+  | "pin"
+  | "edit"
+  | "delete"
+  | "download";
 
 interface IconProps {
   name: IconName;
@@ -465,6 +468,32 @@ export default function Icon({
       return (
         <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
           <Path d="M12 2L12 9M12 9L15 9C17 9 17 11 15 11L12 11M12 9L9 9C7 9 7 11 9 11L12 11M12 11V22" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+      );
+
+    case "edit":
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+      );
+
+    case "delete":
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Path d="M3 6h18" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M8 6V4a1 1 0 011-1h6a1 1 0 011 1v2" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M10 11v6M14 11v6" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+        </Svg>
+      );
+
+    case "download":
+      return (
+        <Svg width={size} height={size} viewBox="0 0 24 24" fill="none">
+          <Path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          <Path d="M7 10l5 5 5-5M12 15V3" stroke={c} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
         </Svg>
       );
 

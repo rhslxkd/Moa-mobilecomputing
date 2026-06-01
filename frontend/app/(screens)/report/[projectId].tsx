@@ -1,11 +1,6 @@
 /**
  * app/(screens)/report/[projectId].tsx
- *
- * 프로젝트 기여도 리포트 화면 — 피그마 Project/Card "기여도 리포트" 버튼 연결
- * - 프로젝트 개요 (진행률, 마감일)
- * - 팀원별 기여도 바
- * - 할일 완료 통계
- * - 회의 횟수
+ * 기여도 리포트 — 피그마 디자인 기준
  */
 
 import React, { useState } from "react";
@@ -18,16 +13,20 @@ import {
   Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter } from "expo-router";
+import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
-import { useProject, type Project } from "@/contexts/ProjectContext";
+import { useProject } from "@/contexts/ProjectContext";
 import OptionSheet, { REPORT_OPTIONS } from "@/components/modals/OptionSheet";
+import Icon from "@/components/common/Icon";
+import MoaLogo from "@/components/common/MoaLogo";
 
-// ── Mock 리포트 데이터 ─────────────────────
+// ── Mock 데이터 ────────────────────────────
 interface MemberReport {
   name: string;
   initial: string;
-  contribution: number; // 0-100
+  contribution: number;
   todosDone: number;
   todosTotal: number;
 }
@@ -51,104 +50,40 @@ const MOCK_REPORTS: Record<string, MemberReport[]> = {
   ],
 };
 
-const MOCK_MEETINGS: Record<string, number> = { "1": 12, "2": 7, "3": 5 };
+const MOCK_MEETINGS: Record<string, number> = { "1": 8, "2": 5, "3": 3 };
 
-// ── 컬러 매핑 ─────────────────────────────
-function getAccent(project: Project, C: ReturnType<typeof useTheme>) {
-  switch (project.color) {
-    case "blue":   return C.primary;
-    case "purple": return C.purple;
-    case "green":  return C.success;
-  }
-}
-
-// ── 기여도 바 아이템 ───────────────────────
-interface ContribBarProps {
-  member: MemberReport;
-  accent: string;
-  rank: number;
-}
-
-function ContribBar({ member, accent, rank }: ContribBarProps) {
-  const C = useTheme();
-  const isFirst = rank === 0;
-
+// ── 다운로드 아이콘 ────────────────────────
+function DownloadIcon({ color }: { color: string }) {
   return (
-    <View style={styles.contribRow}>
-      {/* 순위 + 아바타 */}
-      <View style={styles.contribLeft}>
-        <Text style={[styles.rank, { color: isFirst ? accent : C.textMuted }]}>
-          {rank + 1}
-        </Text>
-        <View
-          style={[
-            styles.memberAvatar,
-            { backgroundColor: isFirst ? accent + "20" : C.bgMuted },
-          ]}
-        >
-          <Text
-            style={[
-              styles.memberInitial,
-              { color: isFirst ? accent : C.textSub },
-            ]}
-          >
-            {member.initial}
-          </Text>
-        </View>
-        <View>
-          <Text style={[styles.memberName, { color: C.text }]}>{member.name}</Text>
-          <Text style={[styles.memberTodo, { color: C.textMuted }]}>
-            {member.todosDone}/{member.todosTotal} 완료
-          </Text>
-        </View>
-      </View>
-
-      {/* 기여도 바 */}
-      <View style={styles.contribRight}>
-        <View style={[styles.barTrack, { backgroundColor: C.bgMuted }]}>
-          <View
-            style={[
-              styles.barFill,
-              {
-                width: `${member.contribution}%`,
-                backgroundColor: isFirst ? accent : C.border,
-              },
-            ]}
-          />
-        </View>
-        <Text style={[styles.contribPct, { color: isFirst ? accent : C.textMuted }]}>
-          {member.contribution}%
-        </Text>
-      </View>
-    </View>
+    <Svg width={20} height={20} viewBox="0 0 24 24" fill="none">
+      <Path d="M12 3v12M8 11l4 4 4-4" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+      <Path d="M5 19h14" stroke={color} strokeWidth={2} strokeLinecap="round" />
+    </Svg>
   );
 }
 
-// ── 통계 카드 ──────────────────────────────
-interface StatCardProps {
-  emoji: string;
-  label: string;
-  value: string;
-  sub?: string;
-  accent: string;
-}
-
-function StatCard({ emoji, label, value, sub, accent }: StatCardProps) {
+// ── 기여도 바 ──────────────────────────────
+function ContribBar({ member, accent, rank }: { member: MemberReport; accent: string; rank: number }) {
   const C = useTheme();
-
+  const isFirst = rank === 0;
   return (
-    <View
-      style={[
-        styles.statCard,
-        { backgroundColor: C.bgCard, borderColor: C.border },
-      ]}
-    >
-      <Text style={{ fontSize: 24 }}>{emoji}</Text>
-      <Text style={[styles.statValue, { color: accent }]}>{value}</Text>
-      <Text style={[styles.statLabel, { color: C.textSub }]}>{label}</Text>
-      {sub && (
-        <Text style={[styles.statSub, { color: C.textMuted }]}>{sub}</Text>
-      )}
+    <View style={s.contribRow}>
+      <View style={s.contribLeft}>
+        <Text style={[s.rank, { color: isFirst ? accent : C.textMuted }]}>{rank + 1}</Text>
+        <View style={[s.memberAvatar, { backgroundColor: isFirst ? accent + "20" : C.bgMuted }]}>
+          <Text style={[s.memberInitial, { color: isFirst ? accent : C.textSub }]}>{member.initial}</Text>
+        </View>
+        <View>
+          <Text style={[s.memberName, { color: C.text }]}>{member.name}</Text>
+          <Text style={[s.memberTodo, { color: C.textMuted }]}>{member.todosDone}/{member.todosTotal} 완료</Text>
+        </View>
+      </View>
+      <View style={s.contribRight}>
+        <View style={[s.barTrack, { backgroundColor: C.bgMuted }]}>
+          <View style={[s.barFill, { width: `${member.contribution}%` as any, backgroundColor: isFirst ? accent : C.border }]} />
+        </View>
+        <Text style={[s.contribPct, { color: isFirst ? accent : C.textMuted }]}>{member.contribution}%</Text>
+      </View>
     </View>
   );
 }
@@ -159,46 +94,84 @@ export default function ReportScreen() {
   const router = useRouter();
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
   const { projects } = useProject();
+  const [optionOpen, setOptionOpen] = useState(false);
 
   const project = projects.find((p) => p.id === projectId) ?? projects[0];
   const members = MOCK_REPORTS[project.id] ?? MOCK_REPORTS["1"];
   const meetingCount = MOCK_MEETINGS[project.id] ?? 0;
-  const accent = getAccent(project, C);
-  const [optionOpen, setOptionOpen] = useState(false);
 
-  const totalDone  = members.reduce((s, m) => s + m.todosDone, 0);
-  const totalTodos = members.reduce((s, m) => s + m.todosTotal, 0);
+  // 통계 계산
+  const myScore = members[0]?.contribution ?? 0;
+  const teamAvg = Math.round(members.reduce((s, m) => s + m.contribution, 0) / members.length);
+  const myRank = 1;
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
-      {/* 헤더 */}
-      <View
-        style={[
-          styles.header,
-          { backgroundColor: C.bgCard, borderBottomColor: C.border },
-        ]}
-      >
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.backArrow, { color: C.text }]}>‹</Text>
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top", "bottom"]}>
+      {/* 흰색 헤더 */}
+      <View style={[s.topBar, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
+        <TouchableOpacity onPress={() => router.back()} style={s.iconBtn} activeOpacity={0.7}>
+          <Icon name="back" size={22} color={C.text} />
         </TouchableOpacity>
-        <Text style={[styles.headerTitle, { color: C.text }]} numberOfLines={1}>
-          기여도 리포트
-        </Text>
-        {/* 옵션 버튼 */}
-        <TouchableOpacity
-          onPress={() => setOptionOpen(true)}
-          style={styles.backBtn}
-          activeOpacity={0.7}
-        >
-          <Text style={[styles.moreIcon, { color: C.textSub }]}>⋯</Text>
+        <View style={s.topBarTitleWrap}>
+          <MoaLogo size={22} variant="primary" />
+          <Text style={[s.topBarSub, { color: C.textMuted }]}>기여도 리포트 · </Text>
+          <Text style={[s.topBarBold, { color: C.text }]} numberOfLines={1}>{project.name}</Text>
+        </View>
+        <TouchableOpacity onPress={() => setOptionOpen(true)} style={s.iconBtn} activeOpacity={0.7}>
+          <Icon name="settings" size={22} color={C.textSub} />
         </TouchableOpacity>
       </View>
 
-      {/* 리포트 옵션 바텀시트 */}
+      {/* 파란 그라디언트 섹션 */}
+      <LinearGradient
+        colors={["#00A9EC", "#0084FF"]}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={s.header}
+      >
+        {/* 제목 + PDF 버튼 */}
+        <View style={s.headerTitleRow}>
+          <View>
+            <Text style={s.headerProjectName}>{project.name}</Text>
+            <Text style={s.headerTitle}>기여도 리포트</Text>
+          </View>
+          <TouchableOpacity
+            style={s.pdfBtn}
+            activeOpacity={0.85}
+            onPress={() => Alert.alert("PDF 다운로드", "리포트를 PDF로 저장합니다.")}
+          >
+            <DownloadIcon color="#00A9EC" />
+          </TouchableOpacity>
+        </View>
+
+        {/* 통계 4개 카드 */}
+        <View style={s.statRow}>
+          {[
+            { label: "순위",    value: `${myRank}위` },
+            { label: "내 점수", value: `${myScore}` },
+            { label: "팀 평균", value: `${teamAvg}` },
+            { label: "회의 횟수", value: `${meetingCount}회` },
+          ].map((stat) => (
+            <View key={stat.label} style={s.statCard}>
+              <Text style={s.statLabel}>{stat.label}</Text>
+              <Text style={s.statValue}>{stat.value}</Text>
+            </View>
+          ))}
+        </View>
+      </LinearGradient>
+
+      {/* 콘텐츠 */}
+      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+        <View style={[s.contentCard, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+          <Text style={[s.contentTitle, { color: C.text }]}>팀원별 기여도</Text>
+          <View style={s.contribList}>
+            {members.map((member, idx) => (
+              <ContribBar key={member.name} member={member} accent={project.color} rank={idx} />
+            ))}
+          </View>
+        </View>
+      </ScrollView>
+
       <OptionSheet
         isOpen={optionOpen}
         onClose={() => setOptionOpen(false)}
@@ -209,216 +182,88 @@ export default function ReportScreen() {
           () => { Alert.alert("삭제", "리포트가 삭제되었습니다."); router.back(); }
         )}
       />
-
-      <ScrollView
-        contentContainerStyle={styles.body}
-        showsVerticalScrollIndicator={false}
-      >
-        {/* 프로젝트 개요 */}
-        <View
-          style={[
-            styles.overviewCard,
-            { backgroundColor: C.bgCard, borderColor: C.border },
-          ]}
-        >
-          <View style={styles.overviewTop}>
-            <Text style={{ fontSize: 28 }}>{project.emoji}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={[styles.projectName, { color: C.text }]}>
-                {project.name}
-              </Text>
-              <Text style={[styles.projectMeta, { color: C.textMuted }]}>
-                마감 {project.dueDate} · D-{project.daysLeft}
-              </Text>
-            </View>
-          </View>
-
-          {/* 전체 진행률 */}
-          <View style={styles.progressSection}>
-            <View style={styles.progressLabelRow}>
-              <Text style={[styles.progressLabel, { color: C.textSub }]}>
-                전체 진행률
-              </Text>
-              <Text style={[styles.progressPct, { color: accent }]}>
-                {project.progress}%
-              </Text>
-            </View>
-            <View style={[styles.progressTrack, { backgroundColor: C.bgMuted }]}>
-              <View
-                style={[
-                  styles.progressFill,
-                  { width: `${project.progress}%`, backgroundColor: accent },
-                ]}
-              />
-            </View>
-          </View>
-        </View>
-
-        {/* 통계 카드 3개 */}
-        <View style={styles.statGrid}>
-          <StatCard
-            emoji="✅"
-            label="할일 완료"
-            value={`${totalDone}/${totalTodos}`}
-            sub={`${Math.round((totalDone / totalTodos) * 100)}%`}
-            accent={accent}
-          />
-          <StatCard
-            emoji="🎙"
-            label="총 회의"
-            value={`${meetingCount}회`}
-            accent={accent}
-          />
-          <StatCard
-            emoji="👥"
-            label="팀원"
-            value={`${members.length}명`}
-            accent={accent}
-          />
-        </View>
-
-        {/* 팀원별 기여도 */}
-        <View
-          style={[
-            styles.section,
-            { backgroundColor: C.bgCard, borderColor: C.border },
-          ]}
-        >
-          <Text style={[styles.sectionTitle, { color: C.text }]}>
-            팀원별 기여도
-          </Text>
-          <View style={styles.contribList}>
-            {members.map((member, idx) => (
-              <ContribBar
-                key={member.name}
-                member={member}
-                accent={accent}
-                rank={idx}
-              />
-            ))}
-          </View>
-        </View>
-      </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+const s = StyleSheet.create({
   safe: { flex: 1 },
 
-  header: {
+  // 흰색 상단 바
+  topBar: {
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 8,
-    paddingVertical: 14,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  backBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
-  backArrow: { fontSize: 32, fontWeight: "300", lineHeight: 36 },
-  moreIcon: { fontSize: 22, fontWeight: "600", letterSpacing: 2 },
-  headerTitle: { flex: 1, fontSize: 17, fontWeight: "600", textAlign: "center" },
+  topBarTitleWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 4 },
+  topBarSub: { fontSize: 15, fontWeight: "400" },
+  topBarBold: { fontSize: 15, fontWeight: "700", flex: 1 },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
 
-  body: {
-    padding: 16,
-    gap: 12,
-    paddingBottom: 40,
-  },
+  // 파란 그라디언트 섹션
+  header: { paddingBottom: 20 },
 
-  // 개요
-  overviewCard: {
-    borderRadius: 20,
-    borderWidth: 1,
-    padding: 20,
-    gap: 16,
-  },
-  overviewTop: {
+  headerTitleRow: {
     flexDirection: "row",
+    alignItems: "flex-end",
+    justifyContent: "space-between",
+    paddingHorizontal: 20,
+    marginTop: 8,
+    marginBottom: 16,
+  },
+  headerProjectName: { color: "rgba(255,255,255,0.85)", fontSize: 12, fontWeight: "500", marginBottom: 4 },
+  headerTitle: { color: "#FFFFFF", fontSize: 24, fontWeight: "700" },
+  pdfBtn: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#FFFFFF",
     alignItems: "center",
-    gap: 12,
-  },
-  projectName: { fontSize: 16, fontWeight: "700" },
-  projectMeta: { fontSize: 12, marginTop: 2 },
-  progressSection: { gap: 8 },
-  progressLabelRow: { flexDirection: "row", justifyContent: "space-between" },
-  progressLabel: { fontSize: 13, fontWeight: "500" },
-  progressPct: { fontSize: 13, fontWeight: "700" },
-  progressTrack: {
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  progressFill: {
-    height: "100%",
-    borderRadius: 4,
+    justifyContent: "center",
   },
 
-  // 통계 그리드
-  statGrid: {
+  // 통계 카드
+  statRow: {
     flexDirection: "row",
-    gap: 10,
+    paddingHorizontal: 16,
+    gap: 8,
   },
   statCard: {
     flex: 1,
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 14,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    borderWidth: 0.5,
+    borderColor: "rgba(255,255,255,0.5)",
+    borderRadius: 8,
+    paddingVertical: 10,
     alignItems: "center",
-    gap: 4,
+    gap: 2,
   },
-  statValue: { fontSize: 20, fontWeight: "700" },
-  statLabel: { fontSize: 11, fontWeight: "500", textAlign: "center" },
-  statSub: { fontSize: 11 },
+  statLabel: { color: "rgba(255,255,255,0.85)", fontSize: 10, fontWeight: "500" },
+  statValue: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
 
-  // 기여도 섹션
-  section: {
-    borderRadius: 20,
+  // 콘텐츠
+  body: { padding: 16, paddingBottom: 40 },
+  contentCard: {
+    borderRadius: 16,
     borderWidth: 1,
     padding: 16,
     gap: 14,
   },
-  sectionTitle: { fontSize: 15, fontWeight: "700" },
+  contentTitle: { fontSize: 15, fontWeight: "700" },
 
+  // 기여도 바
   contribList: { gap: 12 },
-  contribRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
-  },
-  contribLeft: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-    width: 150,
-    flexShrink: 0,
-  },
+  contribRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  contribLeft: { flexDirection: "row", alignItems: "center", gap: 8, width: 150, flexShrink: 0 },
   rank: { fontSize: 14, fontWeight: "700", width: 16, textAlign: "center" },
-  memberAvatar: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    alignItems: "center",
-    justifyContent: "center",
-    flexShrink: 0,
-  },
+  memberAvatar: { width: 34, height: 34, borderRadius: 17, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   memberInitial: { fontSize: 14, fontWeight: "700" },
   memberName: { fontSize: 13, fontWeight: "600" },
   memberTodo: { fontSize: 11, marginTop: 1 },
-
-  contribRight: {
-    flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 8,
-  },
-  barTrack: {
-    flex: 1,
-    height: 8,
-    borderRadius: 4,
-    overflow: "hidden",
-  },
-  barFill: {
-    height: "100%",
-    borderRadius: 4,
-  },
+  contribRight: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
+  barTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
+  barFill: { height: "100%", borderRadius: 4 },
   contribPct: { fontSize: 12, fontWeight: "700", width: 36, textAlign: "right" },
 });

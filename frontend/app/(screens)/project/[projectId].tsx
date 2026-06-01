@@ -4,7 +4,7 @@
  * 프로젝트 세부 화면 — 탭별 내용 (개요 / 채팅 / 할일 / 파일)
  */
 
-import React, { useState } from "react";
+import React, { useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -12,7 +12,15 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  LayoutAnimation,
+  Platform,
+  UIManager,
 } from "react-native";
+import Svg, { Path, Polyline } from "react-native-svg";
+
+if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -26,12 +34,6 @@ const STATUS_CONFIG = {
   active:    { label: "진행중", color: "#00A9EC", bg: "#E6F7FD" },
   upcoming:  { label: "예정",   color: "#7C3AED", bg: "#F5F3FF" },
   completed: { label: "완료",   color: "#16A34A", bg: "#F0FDF4" },
-} as const;
-
-const PROJECT_COLOR = {
-  blue:   "#00A9EC",
-  purple: "#7C3AED",
-  green:  "#16A34A",
 } as const;
 
 type Tab = "overview" | "chat" | "todo" | "files";
@@ -57,7 +59,7 @@ export default function ProjectDetailScreen() {
   }
 
   const { label, color: statusColor, bg: statusBg } = STATUS_CONFIG[project.status];
-  const accentColor = PROJECT_COLOR[project.color];
+  const accentColor = project.color;
 
   const TABS: { key: Tab; label: string; icon: any }[] = [
     { key: "overview", label: "개요",   icon: "home"     },
@@ -98,7 +100,16 @@ export default function ProjectDetailScreen() {
             <TouchableOpacity
               key={tab.key}
               style={styles.tabItem}
-              onPress={() => setActiveTab(tab.key)}
+              onPress={() => {
+                if (tab.key === "files") {
+                  router.push("/(screens)/drive" as any);
+                } else if (tab.key === "chat") {
+                  setCurrentProject(project);
+                  router.push(`/(screens)/chat/${project.id}` as any);
+                } else {
+                  setActiveTab(tab.key);
+                }
+              }}
               activeOpacity={0.7}
             >
               <Icon
@@ -143,7 +154,7 @@ export default function ProjectDetailScreen() {
           />
         )}
         {activeTab === "chat" && <PlaceholderTab icon="chat" label="채팅" C={C} />}
-        {activeTab === "todo" && <PlaceholderTab icon="todo" label="할일" C={C} />}
+        {activeTab === "todo" && <TodoTab project={project} accentColor={accentColor} C={C} />}
         {activeTab === "files" && <PlaceholderTab icon="folder" label="파일" C={C} />}
       </ScrollView>
 
@@ -315,8 +326,12 @@ function OverviewTab({
               </Text>
             </View>
             <Text style={[styles.memberName, { color: C.text }]}>{member.name}</Text>
-            <View style={[styles.roleBadge, { backgroundColor: C.bg }]}>
-              <Text style={[styles.roleText, { color: C.textSub }]}>{member.role}</Text>
+            <View style={styles.memberRolesRow}>
+              {member.roles.map(role => (
+                <View key={role} style={[styles.roleBadge, { backgroundColor: C.bg }]}>
+                  <Text style={[styles.roleText, { color: C.textSub }]}>{role}</Text>
+                </View>
+              ))}
             </View>
           </View>
         ))}
@@ -347,6 +362,374 @@ function InfoRow({
     </View>
   );
 }
+
+// ── 팀 투두 탭 ──────────────────────────────────────────────────
+
+const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
+
+const ROLE_STYLE: Record<string, { bg: string; color: string }> = {
+  팀장:          { bg: "#FFF3CD", color: "#B45309" },
+  개발자:        { bg: "#E0F2FE", color: "#0369A1" },
+  디자이너:      { bg: "#F3E8FF", color: "#7C3AED" },
+  기획자:        { bg: "#DCFCE7", color: "#16A34A" },
+  "데이터 분석": { bg: "#FEE2E2", color: "#DC2626" },
+  QA:            { bg: "#F1F5F9", color: "#64748B" },
+};
+
+const TODO_POOL: Record<string, string[]> = {
+  팀장:          ["스프린트 계획 수립", "팀 주간 회의 진행", "프로젝트 일정 업데이트", "리스크 관리 문서 작성"],
+  개발자:        ["API 엔드포인트 개발", "단위 테스트 작성", "코드 리뷰 진행", "버그 수정 및 배포", "기술 문서 업데이트"],
+  디자이너:      ["UI 컴포넌트 제작", "피그마 프로토타입 수정", "사용자 인터뷰 분석", "디자인 시스템 정리"],
+  기획자:        ["요구사항 명세서 작성", "사용자 스토리 정의", "경쟁사 분석 보고서", "기능 우선순위 정리"],
+  "데이터 분석": ["데이터 전처리 스크립트 작성", "모델 성능 평가", "분석 결과 시각화"],
+  QA:            ["테스트 시나리오 작성", "회귀 테스트 수행", "버그 리포트 정리"],
+};
+
+interface TodoItemT { id: string; title: string; done: boolean; dueDate: Date }
+
+function toDateStrT(d: Date) {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+function getDdayT(d: Date): { label: string; color: string; bg: string } {
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const due = new Date(d);  due.setHours(0, 0, 0, 0);
+  const diff = Math.round((due.getTime() - today.getTime()) / 86400000);
+  if (diff === 0) return { label: "D-Day", color: "#fff",     bg: "#00A9EC" };
+  if (diff > 0)   return { label: `D-${diff}`,             color: "#16A34A", bg: "#DCFCE7" };
+  return                  { label: `D+${Math.abs(diff)}`,  color: "#DC2626", bg: "#FEE2E2" };
+}
+
+function getMockTodosT(memberId: string, role: string): TodoItemT[] {
+  const pool = TODO_POOL[role] ?? TODO_POOL["개발자"];
+  const seed = memberId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
+  const count = 2 + (seed % 3);
+  const doneCount = seed % 2;
+  return pool.slice(0, count + doneCount).map((title, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + (seed % 5) + i * 2);
+    return { id: `${memberId}-${i}`, title, done: i >= count, dueDate: d };
+  });
+}
+
+function TChevronLeft({ color }: { color: string }) {
+  return <Svg width={16} height={16} viewBox="0 0 24 24" fill="none"><Path d="M15 18L9 12L15 6" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+function TChevronRight({ color }: { color: string }) {
+  return <Svg width={16} height={16} viewBox="0 0 24 24" fill="none"><Path d="M9 18L15 12L9 6" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+function TChevronDown({ color }: { color: string }) {
+  return <Svg width={15} height={15} viewBox="0 0 24 24" fill="none"><Path d="M6 9L12 15L18 9" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+function TChevronUp({ color }: { color: string }) {
+  return <Svg width={15} height={15} viewBox="0 0 24 24" fill="none"><Path d="M18 15L12 9L6 15" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" /></Svg>;
+}
+
+function TodoCalendar({ selectedDate, onSelectDate, todosByDate, accent, C }: {
+  selectedDate: Date | null;
+  onSelectDate: (d: Date | null) => void;
+  todosByDate: Record<string, number>;
+  accent: string;
+  C: ReturnType<typeof useTheme>;
+}) {
+  const today = new Date();
+  const [viewYear, setViewYear] = useState(today.getFullYear());
+  const [viewMonth, setViewMonth] = useState(today.getMonth());
+  const todayStr = toDateStrT(today);
+
+  const firstDay = new Date(viewYear, viewMonth, 1).getDay();
+  const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+  const cells: (number | null)[] = [
+    ...Array(firstDay).fill(null),
+    ...Array.from({ length: daysInMonth }, (_, i) => i + 1),
+  ];
+  while (cells.length % 7 !== 0) cells.push(null);
+  const weeks: (number | null)[][] = [];
+  for (let i = 0; i < cells.length; i += 7) weeks.push(cells.slice(i, i + 7));
+
+  const prev = () => { if (viewMonth === 0) { setViewMonth(11); setViewYear(y => y - 1); } else setViewMonth(m => m - 1); };
+  const next = () => { if (viewMonth === 11) { setViewMonth(0); setViewYear(y => y + 1); } else setViewMonth(m => m + 1); };
+
+  return (
+    <View style={[tcalS.card, { backgroundColor: C.bgCard }]}>
+      <View style={tcalS.navRow}>
+        <TouchableOpacity onPress={prev} activeOpacity={0.7} style={tcalS.navBtn}><TChevronLeft color={C.textSub} /></TouchableOpacity>
+        <Text style={[tcalS.monthLabel, { color: C.text }]}>{viewMonth + 1}월</Text>
+        <TouchableOpacity onPress={next} activeOpacity={0.7} style={tcalS.navBtn}><TChevronRight color={C.textSub} /></TouchableOpacity>
+      </View>
+      <View style={tcalS.weekRow}>
+        {DAY_KO.map((d, i) => (
+          <Text key={d} style={[tcalS.dayLabel, { color: i === 0 ? "#FF3B30" : i === 6 ? accent : C.textMuted }]}>{d}</Text>
+        ))}
+      </View>
+      {weeks.map((week, wi) => (
+        <View key={wi} style={tcalS.weekRow}>
+          {week.map((day, di) => {
+            if (!day) return <View key={di} style={tcalS.dayCell} />;
+            const dateStr = `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+            const isToday = dateStr === todayStr;
+            const isSelected = selectedDate
+              ? selectedDate.getFullYear() === viewYear && selectedDate.getMonth() === viewMonth && selectedDate.getDate() === day
+              : false;
+            const count = todosByDate[dateStr] ?? 0;
+            const isSun = di === 0, isSat = di === 6;
+            return (
+              <TouchableOpacity
+                key={di}
+                style={tcalS.dayCell}
+                onPress={() => isSelected ? onSelectDate(null) : onSelectDate(new Date(viewYear, viewMonth, day))}
+                activeOpacity={0.7}
+              >
+                <View style={[tcalS.dayCircle, isSelected && { backgroundColor: accent }, isToday && !isSelected && { borderWidth: 1.5, borderColor: accent }]}>
+                  <Text style={[tcalS.dayText, { color: isSelected ? "#fff" : isSun ? "#FF3B30" : isSat ? accent : C.text, fontWeight: isToday ? "700" : "400" }]}>{day}</Text>
+                </View>
+                {count > 0 && (
+                  <View style={tcalS.dotRow}>
+                    {Array.from({ length: Math.min(count, 3) }).map((_, pi) => (
+                      <View key={pi} style={[tcalS.dot, { backgroundColor: accent }]} />
+                    ))}
+                  </View>
+                )}
+              </TouchableOpacity>
+            );
+          })}
+        </View>
+      ))}
+    </View>
+  );
+}
+
+const tcalS = StyleSheet.create({
+  card: { borderRadius: 20, padding: 18, shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 12, elevation: 3 },
+  navRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 28, marginBottom: 16 },
+  navBtn: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  monthLabel: { fontSize: 17, fontWeight: "700", minWidth: 36, textAlign: "center" },
+  weekRow: { flexDirection: "row" },
+  dayLabel: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "600", paddingVertical: 6, letterSpacing: 0.3 },
+  dayCell: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
+  dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  dayText: { fontSize: 13 },
+  dotRow: { flexDirection: "row", gap: 2, height: 5, alignItems: "center" },
+  dot: { width: 4, height: 4, borderRadius: 2 },
+});
+
+function TTodoRow({ todo, onToggle, accent, C }: { todo: TodoItemT; onToggle: (id: string) => void; accent: string; C: ReturnType<typeof useTheme> }) {
+  const dday = getDdayT(todo.dueDate);
+  return (
+    <TouchableOpacity onPress={() => onToggle(todo.id)} activeOpacity={0.7} style={[trowS.row, { borderBottomColor: C.border }]}>
+      <View style={[trowS.checkbox, { borderColor: todo.done ? accent : C.border, backgroundColor: todo.done ? accent : "transparent" }]}>
+        {todo.done && (
+          <Svg width={11} height={11} viewBox="0 0 12 12" fill="none">
+            <Polyline points="2,6 5,9 10,3" stroke="#fff" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+          </Svg>
+        )}
+      </View>
+      <Text style={[trowS.title, { color: todo.done ? C.textMuted : C.text, textDecorationLine: todo.done ? "line-through" : "none" }]} numberOfLines={1}>{todo.title}</Text>
+      {!todo.done && (
+        <View style={[trowS.badge, { backgroundColor: dday.bg }]}>
+          <Text style={[trowS.badgeText, { color: dday.color }]}>{dday.label}</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
+}
+
+const trowS = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 13, paddingHorizontal: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  checkbox: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  title: { flex: 1, fontSize: 14, fontWeight: "500" },
+  badge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20, flexShrink: 0 },
+  badgeText: { fontSize: 11, fontWeight: "700" },
+});
+
+function TMemberSection({ member, todos, accent, onToggle, C }: {
+  member: { id: string; name: string; roles: string[] };
+  todos: TodoItemT[];
+  accent: string;
+  onToggle: (id: string) => void;
+  C: ReturnType<typeof useTheme>;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const [doneOpen, setDoneOpen] = useState(false);
+
+  if (todos.length === 0) return null;
+
+  const pending = todos.filter(t => !t.done);
+  const done = todos.filter(t => t.done);
+
+  const toggle = () => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpanded(v => !v); };
+  const toggleDone = () => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setDoneOpen(v => !v); };
+
+  return (
+    <View style={[tmemS.card, { backgroundColor: C.bgCard }]}>
+      <TouchableOpacity activeOpacity={0.7} onPress={toggle} style={tmemS.header}>
+        <View style={[tmemS.avatar, { backgroundColor: accent + "20" }]}>
+          <Text style={[tmemS.avatarText, { color: accent }]}>{member.name.charAt(0)}</Text>
+        </View>
+        <View style={tmemS.nameWrap}>
+          <Text style={[tmemS.name, { color: C.text }]}>{member.name}</Text>
+          <View style={tmemS.rolesRow}>
+            {member.roles.map(role => {
+              const rs = ROLE_STYLE[role] ?? { bg: "#F1F5F9", color: "#64748B" };
+              return (
+                <View key={role} style={[tmemS.rolePill, { backgroundColor: rs.bg }]}>
+                  <Text style={[tmemS.roleText, { color: rs.color }]}>{role}</Text>
+                </View>
+              );
+            })}
+          </View>
+        </View>
+        {pending.length > 0 && (
+          <View style={[tmemS.countBadge, { backgroundColor: accent }]}>
+            <Text style={tmemS.countText}>{pending.length}</Text>
+          </View>
+        )}
+        {expanded ? <TChevronUp color={C.textMuted} /> : <TChevronDown color={C.textMuted} />}
+      </TouchableOpacity>
+
+      {expanded && (
+        <>
+          {pending.map(t => <TTodoRow key={t.id} todo={t} onToggle={onToggle} accent={accent} C={C} />)}
+          {done.length > 0 && (
+            <>
+              <TouchableOpacity onPress={toggleDone} activeOpacity={0.7} style={[tmemS.doneToggle, { borderTopColor: C.border }]}>
+                <Text style={[tmemS.doneLabel, { color: C.textMuted }]}>완료 {done.length}개</Text>
+                {doneOpen ? <TChevronUp color={C.textMuted} /> : <TChevronDown color={C.textMuted} />}
+              </TouchableOpacity>
+              {doneOpen && done.map(t => <TTodoRow key={t.id} todo={t} onToggle={onToggle} accent={accent} C={C} />)}
+            </>
+          )}
+          {pending.length === 0 && done.length === 0 && (
+            <Text style={[tmemS.empty, { color: C.textMuted }]}>할 일이 없어요.</Text>
+          )}
+        </>
+      )}
+    </View>
+  );
+}
+
+const tmemS = StyleSheet.create({
+  card: { borderRadius: 16, overflow: "hidden", shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
+  header: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
+  avatar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", flexShrink: 0 },
+  avatarText: { fontSize: 16, fontWeight: "800" },
+  nameWrap: { flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 4 },
+  name: { fontSize: 15, fontWeight: "700" },
+  rolesRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
+  rolePill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
+  roleText: { fontSize: 11, fontWeight: "600" },
+  countBadge: { minWidth: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
+  countText: { fontSize: 12, fontWeight: "800", color: "#fff" },
+  doneToggle: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", paddingVertical: 10, paddingHorizontal: 16, borderTopWidth: StyleSheet.hairlineWidth },
+  doneLabel: { fontSize: 12, fontWeight: "500" },
+  empty: { textAlign: "center", fontSize: 13, paddingVertical: 18 },
+});
+
+function TodoTab({
+  project, accentColor, C,
+}: {
+  project: ReturnType<typeof useProject>["projects"][0];
+  accentColor: string;
+  C: ReturnType<typeof useTheme>;
+}) {
+  const [todoMap, setTodoMap] = useState<Record<string, TodoItemT[]>>(() =>
+    Object.fromEntries(project.members.map(m => [m.id, getMockTodosT(m.id, m.roles[0] ?? "개발자")]))
+  );
+  const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  const toggleTodo = (memberId: string, todoId: string) => {
+    setTodoMap(prev => ({
+      ...prev,
+      [memberId]: prev[memberId].map(t => t.id === todoId ? { ...t, done: !t.done } : t),
+    }));
+  };
+
+  const allTodos = useMemo(() => Object.values(todoMap).flat(), [todoMap]);
+
+  const todosByDate = useMemo(() => {
+    const map: Record<string, number> = {};
+    allTodos.forEach(t => { if (!t.done) { const k = toDateStrT(t.dueDate); map[k] = (map[k] ?? 0) + 1; } });
+    return map;
+  }, [allTodos]);
+
+  const filteredMap = useMemo(() => {
+    if (!selectedDate) return todoMap;
+    const sel = toDateStrT(selectedDate);
+    return Object.fromEntries(
+      Object.entries(todoMap).map(([id, todos]) => [id, todos.filter(t => toDateStrT(t.dueDate) === sel)])
+    );
+  }, [todoMap, selectedDate]);
+
+  const totalPending = useMemo(() => Object.values(filteredMap).flat().filter(t => !t.done).length, [filteredMap]);
+  const hasAny = useMemo(() => Object.values(filteredMap).some(ts => ts.length > 0), [filteredMap]);
+
+  const dateLabelStr = selectedDate
+    ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 (${DAY_KO[selectedDate.getDay()]})`
+    : "전체";
+
+  return (
+    <>
+      <TodoCalendar
+        selectedDate={selectedDate}
+        onSelectDate={setSelectedDate}
+        todosByDate={todosByDate}
+        accent={accentColor}
+        C={C}
+      />
+
+      <View style={ttabS.filterRow}>
+        <Text style={[ttabS.filterLabel, { color: C.text }]}>{dateLabelStr}</Text>
+        <View style={ttabS.filterRight}>
+          {totalPending > 0 && (
+            <View style={[ttabS.totalBadge, { backgroundColor: accentColor + "18" }]}>
+              <Text style={[ttabS.totalBadgeText, { color: accentColor }]}>{totalPending}개 남음</Text>
+            </View>
+          )}
+          {selectedDate && (
+            <TouchableOpacity onPress={() => setSelectedDate(null)} activeOpacity={0.7} style={[ttabS.clearBtn, { borderColor: C.border }]}>
+              <Text style={[ttabS.clearText, { color: C.textMuted }]}>전체 보기</Text>
+            </TouchableOpacity>
+          )}
+        </View>
+      </View>
+
+      {hasAny ? (
+        project.members.map(member => (
+          <TMemberSection
+            key={member.id}
+            member={member}
+            todos={filteredMap[member.id] ?? []}
+            accent={accentColor}
+            onToggle={(todoId) => toggleTodo(member.id, todoId)}
+            C={C}
+          />
+        ))
+      ) : (
+        <View style={ttabS.emptyWrap}>
+          <Text style={ttabS.emptyEmoji}>🎉</Text>
+          <Text style={[ttabS.emptyTitle, { color: C.text }]}>
+            {selectedDate ? "이 날은 할 일이 없어요!" : "모든 할 일을 완료했어요!"}
+          </Text>
+          <Text style={[ttabS.emptyDesc, { color: C.textMuted }]}>새로운 할 일을 추가해보세요</Text>
+        </View>
+      )}
+    </>
+  );
+}
+
+const ttabS = StyleSheet.create({
+  filterRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 2, marginBottom: -2 },
+  filterLabel: { fontSize: 16, fontWeight: "700" },
+  filterRight: { flexDirection: "row", alignItems: "center", gap: 8 },
+  totalBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
+  totalBadgeText: { fontSize: 12, fontWeight: "600" },
+  clearBtn: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8, borderWidth: 1 },
+  clearText: { fontSize: 12, fontWeight: "500" },
+  emptyWrap: { alignItems: "center", paddingVertical: 48, gap: 6 },
+  emptyEmoji: { fontSize: 40, marginBottom: 4 },
+  emptyTitle: { fontSize: 16, fontWeight: "700" },
+  emptyDesc: { fontSize: 13 },
+});
 
 // ── 준비 중 탭 ───────────────────────────────────────────────────
 function PlaceholderTab({
@@ -582,6 +965,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
   },
+
+  memberRolesRow: { flexDirection: "row", flexWrap: "wrap", gap: 4, justifyContent: "flex-end" },
 
   // 팀원 카드
   memberHeader: {

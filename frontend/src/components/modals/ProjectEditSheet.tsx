@@ -20,6 +20,7 @@ import {
 import { useTheme } from "@/hooks/useTheme";
 import type { Project, Member } from "@/contexts/ProjectContext";
 import Icon from "@/components/common/Icon";
+import ColorPickerSheet from "@/components/modals/ColorPickerSheet";
 
 // ── 유틸 ─────────────────────────────────────────────────────────
 function isValidDate(s: string) {
@@ -41,11 +42,6 @@ function uid() {
 }
 
 // ── 상수 ─────────────────────────────────────────────────────────
-const COLOR_OPTIONS: { value: Project["color"]; label: string; hex: string }[] = [
-  { value: "blue",   label: "파랑", hex: "#00A9EC" },
-  { value: "purple", label: "보라", hex: "#7C3AED" },
-  { value: "green",  label: "초록", hex: "#16A34A" },
-];
 
 const STATUS_OPTIONS: { value: Project["status"]; label: string }[] = [
   { value: "active",    label: "진행중" },
@@ -60,6 +56,15 @@ const EMOJI_LIST = [
 
 const ROLE_PRESETS = ["팀장", "개발자", "디자이너", "기획자", "데이터 분석", "QA"];
 
+const ROLE_COLORS: Record<string, { bg: string; color: string }> = {
+  팀장:          { bg: "#FFF3CD", color: "#B45309" },
+  개발자:        { bg: "#E0F2FE", color: "#0369A1" },
+  디자이너:      { bg: "#F3E8FF", color: "#7C3AED" },
+  기획자:        { bg: "#DCFCE7", color: "#16A34A" },
+  "데이터 분석": { bg: "#FEE2E2", color: "#DC2626" },
+  QA:            { bg: "#F1F5F9", color: "#64748B" },
+};
+
 // ── 메인 컴포넌트 ─────────────────────────────────────────────────
 interface Props {
   isOpen: boolean;
@@ -73,7 +78,8 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
 
   const [name, setName]         = useState(project.name);
   const [emoji, setEmoji]       = useState(project.emoji);
-  const [color, setColor]       = useState<Project["color"]>(project.color);
+  const [color, setColor]       = useState<string>(project.color);
+  const [colorPickerOpen, setColorPickerOpen] = useState(false);
   const [status, setStatus]     = useState<Project["status"]>(project.status);
   const [startDate, setStart]   = useState(project.startDate);
   const [endDate, setEnd]       = useState(project.endDate);
@@ -82,7 +88,8 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
 
   // 새 팀원 입력 상태
   const [newName, setNewName] = useState("");
-  const [newRole, setNewRole] = useState("");
+  const [newRoles, setNewRoles] = useState<string[]>([]);
+  const [newRoleInput, setNewRoleInput] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
 
   useEffect(() => {
@@ -94,23 +101,35 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
     setEnd(project.endDate);
     setMembers([...project.members]);
     setShowEmoji(false);
+    setColorPickerOpen(false);
     setShowAddRow(false);
-    setNewName(""); setNewRole("");
+    setNewName(""); setNewRoles([]); setNewRoleInput("");
   }, [project.id, isOpen]);
 
   function addMember() {
     if (!newName.trim()) { Alert.alert("오류", "이름을 입력해주세요."); return; }
-    if (!newRole.trim()) { Alert.alert("오류", "역할을 입력해주세요."); return; }
-    setMembers((prev) => [...prev, { id: uid(), name: newName.trim(), role: newRole.trim() }]);
-    setNewName(""); setNewRole(""); setShowAddRow(false);
+    if (newRoles.length === 0) { Alert.alert("오류", "역할을 최소 1개 선택해주세요."); return; }
+    setMembers((prev) => [...prev, { id: uid(), name: newName.trim(), roles: newRoles }]);
+    setNewName(""); setNewRoles([]); setNewRoleInput(""); setShowAddRow(false);
   }
 
   function removeMember(id: string) {
     setMembers((prev) => prev.filter((m) => m.id !== id));
   }
 
-  function updateMemberRole(id: string, role: string) {
-    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, role } : m));
+  function updateMemberRoles(id: string, roles: string[]) {
+    setMembers((prev) => prev.map((m) => m.id === id ? { ...m, roles } : m));
+  }
+
+  function toggleNewRole(role: string) {
+    setNewRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
+  }
+
+  function addCustomNewRole() {
+    const trimmed = newRoleInput.trim();
+    if (!trimmed || newRoles.includes(trimmed)) { setNewRoleInput(""); return; }
+    setNewRoles(prev => [...prev, trimmed]);
+    setNewRoleInput("");
   }
 
   function handleSave() {
@@ -183,16 +202,24 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
 
             {/* ── 색상 ── */}
             <SectionLabel label="프로젝트 색상" C={C} />
-            <View style={styles.colorRow}>
-              {COLOR_OPTIONS.map((opt) => (
-                <TouchableOpacity key={opt.value} onPress={() => setColor(opt.value)} activeOpacity={0.8}
-                  style={[styles.colorChip, { backgroundColor: opt.hex + "20", borderColor: opt.hex },
-                    color === opt.value && { borderWidth: 2.5 }]}>
-                  <View style={[styles.colorDot, { backgroundColor: opt.hex }]} />
-                  <Text style={[styles.colorLabel, { color: opt.hex }]}>{opt.label}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TouchableOpacity
+              onPress={() => setColorPickerOpen(true)}
+              activeOpacity={0.7}
+              style={[styles.colorRow, { backgroundColor: C.bg, borderColor: C.border }]}
+            >
+              <Text style={[styles.rowLabel, { color: C.text }]}>색상</Text>
+              <View style={styles.rowRight}>
+                <View style={[styles.colorPreviewDot, { backgroundColor: color }]} />
+                <Icon name="chevron" size={16} color={C.textMuted} />
+              </View>
+            </TouchableOpacity>
+
+            <ColorPickerSheet
+              visible={colorPickerOpen}
+              selected={color}
+              onSelect={setColor}
+              onClose={() => setColorPickerOpen(false)}
+            />
 
             {/* ── 기간 ── */}
             <SectionLabel label="프로젝트 기간" C={C} />
@@ -235,52 +262,73 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
                   member={m}
                   isLast={i === members.length - 1 && !showAddRow}
                   C={C}
-                  onRoleChange={(role) => updateMemberRole(m.id, role)}
+                  onRolesChange={(roles) => updateMemberRoles(m.id, roles)}
                   onRemove={() => removeMember(m.id)}
                 />
               ))}
 
               {/* 새 팀원 입력 폼 */}
               {showAddRow && (
-                <View style={[styles.addRow, { borderTopColor: C.border }]}>
-                  <TextInput
-                    style={[styles.addInput, { color: C.text, borderColor: C.border }]}
-                    value={newName}
-                    onChangeText={setNewName}
-                    placeholder="이름"
-                    placeholderTextColor={C.textMuted}
-                    maxLength={10}
-                  />
-                  <TextInput
-                    style={[styles.addInput, { color: C.text, borderColor: C.border, flex: 1.4 }]}
-                    value={newRole}
-                    onChangeText={setNewRole}
-                    placeholder="역할"
-                    placeholderTextColor={C.textMuted}
-                    maxLength={10}
-                  />
-                  <TouchableOpacity onPress={addMember} activeOpacity={0.7} style={styles.addConfirm}>
-                    <Icon name="add" size={20} color="#00A9EC" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => { setShowAddRow(false); setNewName(""); setNewRole(""); }}
-                    activeOpacity={0.7} style={styles.addConfirm}>
-                    <Icon name="back" size={20} color={C.textMuted} />
-                  </TouchableOpacity>
-                </View>
-              )}
-
-              {/* 역할 프리셋 (addRow 열려있을 때) */}
-              {showAddRow && (
-                <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                  contentContainerStyle={[styles.presetRow, { borderTopColor: C.border }]}>
-                  {ROLE_PRESETS.map((r) => (
-                    <TouchableOpacity key={r} onPress={() => setNewRole(r)} activeOpacity={0.7}
-                      style={[styles.presetChip, { borderColor: C.border },
-                        newRole === r && { backgroundColor: "#00A9EC15", borderColor: "#00A9EC" }]}>
-                      <Text style={[styles.presetText, { color: newRole === r ? "#00A9EC" : C.textMuted }]}>{r}</Text>
+                <>
+                  <View style={[styles.addRow, { borderTopColor: C.border }]}>
+                    <TextInput
+                      style={[styles.addInput, { color: C.text, borderColor: C.border, flex: 1 }]}
+                      value={newName}
+                      onChangeText={setNewName}
+                      placeholder="이름"
+                      placeholderTextColor={C.textMuted}
+                      maxLength={10}
+                    />
+                    <TouchableOpacity onPress={addMember} activeOpacity={0.7} style={styles.addConfirm}>
+                      <Icon name="add" size={20} color="#00A9EC" />
                     </TouchableOpacity>
-                  ))}
-                </ScrollView>
+                    <TouchableOpacity onPress={() => { setShowAddRow(false); setNewName(""); setNewRoles([]); setNewRoleInput(""); }}
+                      activeOpacity={0.7} style={styles.addConfirm}>
+                      <Icon name="back" size={20} color={C.textMuted} />
+                    </TouchableOpacity>
+                  </View>
+                  {/* 선택된 역할 칩들 */}
+                  {newRoles.length > 0 && (
+                    <View style={[styles.selectedRolesRow, { borderTopColor: C.border }]}>
+                      {newRoles.map(r => {
+                        const rc = ROLE_COLORS[r] ?? { bg: "#F1F5F9", color: "#64748B" };
+                        return (
+                          <TouchableOpacity key={r} onPress={() => toggleNewRole(r)} activeOpacity={0.7}
+                            style={[styles.roleTag, { backgroundColor: rc.bg }]}>
+                            <Text style={[styles.roleTagText, { color: rc.color }]}>{r}</Text>
+                            <Text style={[styles.roleTagX, { color: rc.color }]}>×</Text>
+                          </TouchableOpacity>
+                        );
+                      })}
+                    </View>
+                  )}
+                  {/* 직접 입력 */}
+                  <View style={[styles.customRoleRow, { borderTopColor: C.border }]}>
+                    <TextInput
+                      style={[styles.customRoleInput, { color: C.text, borderColor: C.border }]}
+                      value={newRoleInput}
+                      onChangeText={setNewRoleInput}
+                      placeholder="역할 직접 입력"
+                      placeholderTextColor={C.textMuted}
+                      maxLength={12}
+                      onSubmitEditing={addCustomNewRole}
+                    />
+                    <TouchableOpacity onPress={addCustomNewRole} activeOpacity={0.7} style={styles.addConfirm}>
+                      <Icon name="add" size={18} color="#00A9EC" />
+                    </TouchableOpacity>
+                  </View>
+                  {/* 역할 프리셋 */}
+                  <ScrollView horizontal showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={[styles.presetRow, { borderTopColor: C.border }]}>
+                    {ROLE_PRESETS.map((r) => (
+                      <TouchableOpacity key={r} onPress={() => toggleNewRole(r)} activeOpacity={0.7}
+                        style={[styles.presetChip, { borderColor: C.border },
+                          newRoles.includes(r) && { backgroundColor: "#00A9EC15", borderColor: "#00A9EC" }]}>
+                        <Text style={[styles.presetText, { color: newRoles.includes(r) ? "#00A9EC" : C.textMuted }]}>{r}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </ScrollView>
+                </>
               )}
 
               {/* 팀원 추가 버튼 */}
@@ -302,38 +350,89 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
 }
 
 // ── 팀원 행 ─────────────────────────────────────────────────────
-function MemberRow({ member, isLast, C, onRoleChange, onRemove }: {
+function MemberRow({ member, isLast, C, onRolesChange, onRemove }: {
   member: Member;
   isLast: boolean;
   C: ReturnType<typeof useTheme>;
-  onRoleChange: (role: string) => void;
+  onRolesChange: (roles: string[]) => void;
   onRemove: () => void;
 }) {
-  const initials = member.name.charAt(0);
+  const [addingRole, setAddingRole] = useState(false);
+  const [roleInput, setRoleInput] = useState("");
+
+  const addRole = (role: string) => {
+    const trimmed = role.trim();
+    if (!trimmed || member.roles.includes(trimmed)) { setRoleInput(""); return; }
+    onRolesChange([...member.roles, trimmed]);
+    setRoleInput("");
+    setAddingRole(false);
+  };
+
+  const removeRole = (role: string) => {
+    onRolesChange(member.roles.filter(r => r !== role));
+  };
+
   return (
-    <View style={[styles.memberRow, !isLast && { borderBottomWidth: 1, borderBottomColor: C.border }]}>
-      {/* 아바타 */}
-      <View style={[styles.avatar, { backgroundColor: "#00A9EC20" }]}>
-        <Text style={[styles.avatarText, { color: "#00A9EC" }]}>{initials}</Text>
+    <View style={[styles.memberBlock, !isLast && { borderBottomWidth: 1, borderBottomColor: C.border }]}>
+      {/* 이름 + 삭제 */}
+      <View style={styles.memberTopRow}>
+        <View style={[styles.avatar, { backgroundColor: "#00A9EC20" }]}>
+          <Text style={[styles.avatarText, { color: "#00A9EC" }]}>{member.name.charAt(0)}</Text>
+        </View>
+        <Text style={[styles.memberName, { color: C.text }]}>{member.name}</Text>
+        <TouchableOpacity onPress={onRemove} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+          <Icon name="stop" size={16} color={C.textMuted} />
+        </TouchableOpacity>
       </View>
 
-      {/* 이름 */}
-      <Text style={[styles.memberName, { color: C.text }]}>{member.name}</Text>
+      {/* 역할 칩들 */}
+      <View style={styles.rolesWrap}>
+        {member.roles.map(role => {
+          const rc = ROLE_COLORS[role] ?? { bg: "#F1F5F9", color: "#64748B" };
+          return (
+            <TouchableOpacity key={role} onPress={() => removeRole(role)} activeOpacity={0.7}
+              style={[styles.roleTag, { backgroundColor: rc.bg }]}>
+              <Text style={[styles.roleTagText, { color: rc.color }]}>{role}</Text>
+              <Text style={[styles.roleTagX, { color: rc.color }]}>×</Text>
+            </TouchableOpacity>
+          );
+        })}
+        <TouchableOpacity onPress={() => setAddingRole(v => !v)} activeOpacity={0.7}
+          style={[styles.addRoleTag, { borderColor: C.border }]}>
+          <Text style={[styles.addRoleText, { color: C.textMuted }]}>
+            {addingRole ? "닫기" : "+ 역할"}
+          </Text>
+        </TouchableOpacity>
+      </View>
 
-      {/* 역할 입력 */}
-      <TextInput
-        style={[styles.roleInput, { color: C.textSub, borderColor: C.border }]}
-        value={member.role}
-        onChangeText={onRoleChange}
-        placeholder="역할"
-        placeholderTextColor={C.textMuted}
-        maxLength={12}
-      />
-
-      {/* 삭제 */}
-      <TouchableOpacity onPress={onRemove} activeOpacity={0.7} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-        <Icon name="stop" size={16} color={C.textMuted} />
-      </TouchableOpacity>
+      {/* 역할 추가 인라인 */}
+      {addingRole && (
+        <>
+          <View style={[styles.customRoleRow, { borderTopColor: C.border }]}>
+            <TextInput
+              style={[styles.customRoleInput, { color: C.text, borderColor: C.border }]}
+              value={roleInput}
+              onChangeText={setRoleInput}
+              placeholder="역할 직접 입력"
+              placeholderTextColor={C.textMuted}
+              maxLength={12}
+              onSubmitEditing={() => addRole(roleInput)}
+            />
+            <TouchableOpacity onPress={() => addRole(roleInput)} activeOpacity={0.7} style={styles.addConfirm}>
+              <Icon name="add" size={18} color="#00A9EC" />
+            </TouchableOpacity>
+          </View>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false}
+            contentContainerStyle={[styles.presetRow, { borderTopColor: C.border }]}>
+            {ROLE_PRESETS.filter(r => !member.roles.includes(r)).map(r => (
+              <TouchableOpacity key={r} onPress={() => addRole(r)} activeOpacity={0.7}
+                style={[styles.presetChip, { borderColor: C.border }]}>
+                <Text style={[styles.presetText, { color: C.textMuted }]}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+        </>
+      )}
     </View>
   );
 }
@@ -366,21 +465,28 @@ const styles = StyleSheet.create({
   emojiGrid: { flexDirection: "row", flexWrap: "wrap", padding: 10, gap: 4, borderBottomWidth: 1 },
   emojiBtn: { width: 44, height: 44, alignItems: "center", justifyContent: "center", borderRadius: 10 },
 
-  colorRow: { flexDirection: "row", gap: 10 },
-  colorChip: { flex: 1, flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 10, borderRadius: 12, borderWidth: 1.5 },
-  colorDot: { width: 10, height: 10, borderRadius: 5 },
-  colorLabel: { fontSize: 13, fontWeight: "600" },
+  colorRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingVertical: 14, borderRadius: 14, borderWidth: 1, gap: 12, minHeight: 50 },
+  colorPreviewDot: { width: 24, height: 24, borderRadius: 12 },
 
   statusRow: { flexDirection: "row", gap: 8 },
   statusChip: { flex: 1, alignItems: "center", paddingVertical: 10, borderRadius: 20, borderWidth: 1 },
   statusLabel: { fontSize: 13, fontWeight: "500" },
 
   // 팀원 행
-  memberRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 14, paddingVertical: 12, gap: 10 },
+  memberBlock: { paddingHorizontal: 14, paddingVertical: 10 },
+  memberTopRow: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 8 },
   avatar: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   avatarText: { fontSize: 14, fontWeight: "700" },
-  memberName: { fontSize: 14, fontWeight: "600", width: 60, flexShrink: 0 },
-  roleInput: { flex: 1, fontSize: 13, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8, borderWidth: 1, textAlign: "center" },
+  memberName: { fontSize: 14, fontWeight: "600", flex: 1 },
+  rolesWrap: { flexDirection: "row", flexWrap: "wrap", gap: 6, marginBottom: 2 },
+  roleTag: { flexDirection: "row", alignItems: "center", gap: 4, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12 },
+  roleTagText: { fontSize: 12, fontWeight: "600" },
+  roleTagX: { fontSize: 13, fontWeight: "700", lineHeight: 16 },
+  addRoleTag: { paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12, borderWidth: 1 },
+  addRoleText: { fontSize: 12, fontWeight: "500" },
+  customRoleRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingTop: 8, marginTop: 6, borderTopWidth: StyleSheet.hairlineWidth },
+  customRoleInput: { flex: 1, fontSize: 13, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1 },
+  selectedRolesRow: { flexDirection: "row", flexWrap: "wrap", gap: 6, paddingHorizontal: 12, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth },
 
   // 팀원 추가
   addMemberBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderTopWidth: 1 },

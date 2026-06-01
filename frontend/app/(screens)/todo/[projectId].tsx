@@ -25,11 +25,6 @@ if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental
 }
 
 // ── 상수 & 유틸 ───────────────────────────
-const PROJECT_COLORS: Record<string, string> = {
-  blue:   "#00A9EC",
-  purple: "#7C3AED",
-  green:  "#16A34A",
-};
 const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
 
 const ROLE_STYLE: Record<string, { bg: string; color: string }> = {
@@ -228,7 +223,7 @@ const rowS = StyleSheet.create({
 
 // ── 멤버 섹션 ─────────────────────────────
 function MemberSection({ member, todos, accent, onToggle }: {
-  member: { id: string; name: string; role: string };
+  member: { id: string; name: string; roles: string[] };
   todos: TodoItem[];
   accent: string;
   onToggle: (id: string) => void;
@@ -241,7 +236,6 @@ function MemberSection({ member, todos, accent, onToggle }: {
 
   const pending = todos.filter(t => !t.done);
   const done = todos.filter(t => t.done);
-  const rs = ROLE_STYLE[member.role] ?? { bg: "#F1F5F9", color: "#64748B" };
 
   const toggle = () => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setExpanded(v => !v); };
   const toggleDone = () => { LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut); setDoneOpen(v => !v); };
@@ -257,8 +251,15 @@ function MemberSection({ member, todos, accent, onToggle }: {
         {/* 이름 + 역할 */}
         <View style={memS.nameWrap}>
           <Text style={[memS.name, { color: C.text }]}>{member.name}</Text>
-          <View style={[memS.rolePill, { backgroundColor: rs.bg }]}>
-            <Text style={[memS.roleText, { color: rs.color }]}>{member.role}</Text>
+          <View style={memS.rolesRow}>
+            {member.roles.map(role => {
+              const rs = ROLE_STYLE[role] ?? { bg: "#F1F5F9", color: "#64748B" };
+              return (
+                <View key={role} style={[memS.rolePill, { backgroundColor: rs.bg }]}>
+                  <Text style={[memS.roleText, { color: rs.color }]}>{role}</Text>
+                </View>
+              );
+            })}
           </View>
         </View>
         {/* 미완료 뱃지 */}
@@ -307,8 +308,9 @@ const memS = StyleSheet.create({
   header: { flexDirection: "row", alignItems: "center", gap: 10, padding: 14 },
   avatar: { width: 38, height: 38, borderRadius: 19, alignItems: "center", justifyContent: "center", flexShrink: 0 },
   avatarText: { fontSize: 16, fontWeight: "800" },
-  nameWrap: { flex: 1, flexDirection: "row", alignItems: "center", gap: 7 },
+  nameWrap: { flex: 1, flexDirection: "column", alignItems: "flex-start", gap: 4 },
   name: { fontSize: 15, fontWeight: "700" },
+  rolesRow: { flexDirection: "row", flexWrap: "wrap", gap: 4 },
   rolePill: { paddingHorizontal: 7, paddingVertical: 2, borderRadius: 10 },
   roleText: { fontSize: 11, fontWeight: "600" },
   countBadge: { minWidth: 22, height: 22, borderRadius: 11, alignItems: "center", justifyContent: "center", paddingHorizontal: 6 },
@@ -326,11 +328,11 @@ export default function ProjectTodosScreen() {
   const { projects } = useProject();
 
   const project = projects.find(p => p.id === projectId);
-  const accent = project ? (PROJECT_COLORS[project.color] ?? C.primary) : C.primary;
+  const accent = project ? project.color : C.primary;
 
   const [todoMap, setTodoMap] = useState<Record<string, TodoItem[]>>(() => {
     if (!project) return {};
-    return Object.fromEntries(project.members.map(m => [m.id, getMockTodos(m.id, m.role)]));
+    return Object.fromEntries(project.members.map(m => [m.id, getMockTodos(m.id, m.roles[0] ?? "개발자")]));
   });
 
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -397,11 +399,11 @@ export default function ProjectTodosScreen() {
         </View>
 
         <TouchableOpacity
-          style={[s.addBtn, { backgroundColor: accent }]}
-          activeOpacity={0.8}
+          style={s.iconBtn}
+          activeOpacity={0.7}
           onPress={() => router.push("/(screens)/todo/add" as any)}
         >
-          <PlusIcon color="#fff" />
+          <PlusIcon color={C.textSub} />
         </TouchableOpacity>
       </View>
 
@@ -472,7 +474,6 @@ const s = StyleSheet.create({
   projectEmoji: { fontSize: 20 },
   headerTitle: { fontSize: 15, fontWeight: "800" },
   headerSub: { fontSize: 11, marginTop: 1 },
-  addBtn: { width: 36, height: 36, borderRadius: 12, alignItems: "center", justifyContent: "center", flexShrink: 0 },
 
   body: { padding: 16, gap: 14, paddingBottom: 48 },
 

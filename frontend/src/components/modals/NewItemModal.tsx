@@ -59,9 +59,9 @@ export default function NewItemModal({ isOpen, onClose, onOpenCreate }: NewItemM
     router.push("/(tabs)/todos");
   };
 
-  const handleChat = () => {
+  const handleDrive = () => {
     handleClose();
-    router.push("/(tabs)/chat");
+    router.push("/(screens)/drive" as any);
   };
 
   const s = makeStyles(C);
@@ -87,7 +87,7 @@ export default function NewItemModal({ isOpen, onClose, onOpenCreate }: NewItemM
       emoji: "📁",
       label: "파일 업로드",
       sub: "프로젝트 파일함에 바로 추가",
-      onPress: handleChat,
+      onPress: handleDrive,
     },
   ];
 
@@ -225,12 +225,6 @@ interface ProjectOptionProps {
 }
 
 function ProjectOption({ project, isSelected, onSelect, C }: ProjectOptionProps) {
-  const EMOJI_BG: Record<string, string> = {
-    blue: C.primaryBg,
-    purple: C.purpleBg,
-    green: C.successBg,
-  };
-
   return (
     <TouchableOpacity
       style={[
@@ -245,7 +239,7 @@ function ProjectOption({ project, isSelected, onSelect, C }: ProjectOptionProps)
     >
       <View style={[
         styles.projEmoji,
-        { backgroundColor: EMOJI_BG[project.color] ?? C.bgMuted },
+        { backgroundColor: project.color + "20" },
       ]}>
         <Text style={{ fontSize: 16 }}>{project.emoji}</Text>
       </View>

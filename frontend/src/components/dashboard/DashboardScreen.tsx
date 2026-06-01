@@ -100,6 +100,7 @@ export default function DashboardScreen() {
   const s = makeStyles(C, isDark, insets);
   const [alarmOpen, setAlarmOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
@@ -184,7 +185,10 @@ export default function DashboardScreen() {
                 setCurrentProject(project);
                 router.push(`/(screens)/report/${project.id}`);
               }}
-              onFolder={() => { }}
+              onFolder={() => {
+                setCurrentProject(project);
+                router.push("/(screens)/drive" as any);
+              }}
               onChat={() => {
                 setCurrentProject(project);
                 router.push(`/(screens)/chat/${project.id}`);
@@ -262,13 +266,19 @@ export default function DashboardScreen() {
                   </View>
                   <TextInput
                     style={{ flex: 1, fontSize: 16, color: C.text }}
-                    placeholder="검색어를 입력해주세요..."
+                    placeholder="프로젝트 검색..."
                     placeholderTextColor={C.textMuted}
                     autoFocus
+                    value={searchQuery}
+                    onChangeText={setSearchQuery}
                   />
                 </View>
                 <View style={s.headerRight}>
-                  <TouchableOpacity style={s.iconBtn} activeOpacity={0.7}>
+                  <TouchableOpacity
+                    style={s.iconBtn}
+                    activeOpacity={0.7}
+                    onPress={() => { setSearchOpen(false); setSearchQuery(""); }}
+                  >
                     <SearchIcon color={C.text} />
                   </TouchableOpacity>
                   <TouchableOpacity
@@ -284,22 +294,41 @@ export default function DashboardScreen() {
               {/* 파란색 구분선 */}
               <View style={{ height: 1, backgroundColor: "#00A9EC", opacity: 0.5 }} />
 
-              {/* 샘플 리스트 */}
+              {/* 검색 결과 리스트 */}
               <View style={{ paddingBottom: 8 }}>
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <TouchableOpacity
-                    key={i}
-                    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border }}
-                  >
-                    <SearchIcon color={C.textMuted} />
-                    <Text style={{ marginLeft: 16, fontSize: 15, color: C.textSub }}>검색어 샘플</Text>
-                  </TouchableOpacity>
-                ))}
+                {projects
+                  .filter(p => !searchQuery.trim() || p.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: C.border }}
+                      onPress={() => {
+                        setCurrentProject(p);
+                        setSearchOpen(false);
+                        setSearchQuery("");
+                        router.push(`/(screens)/project/${p.id}`);
+                      }}
+                    >
+                      <Text style={{ fontSize: 20, marginRight: 14 }}>{p.emoji}</Text>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ fontSize: 15, color: C.text, fontWeight: "600" }}>{p.name}</Text>
+                        <Text style={{ fontSize: 12, color: C.textMuted, marginTop: 2 }}>팀원 {p.memberCount}명 · D-{p.daysLeft}</Text>
+                      </View>
+                      <View style={[{ paddingHorizontal: 8, paddingVertical: 3, borderRadius: 12 }, { backgroundColor: STATUS_CONFIG[p.status].bg }]}>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: STATUS_CONFIG[p.status].color }}>{STATUS_CONFIG[p.status].label}</Text>
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                {searchQuery.trim() && projects.filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())).length === 0 && (
+                  <View style={{ alignItems: 'center', paddingVertical: 32 }}>
+                    <Text style={{ fontSize: 15, color: C.textMuted }}>검색 결과가 없습니다</Text>
+                  </View>
+                )}
               </View>
             </View>
           </SafeAreaView>
           {/* 바깥 터치 시 닫기 */}
-          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => setSearchOpen(false)} />
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={() => { setSearchOpen(false); setSearchQuery(""); }} />
         </View>
       )}
 
@@ -393,9 +422,7 @@ function ProjectCard({ project, isSelected, onSelect, C, isDark, onMeeting, onRe
   const { label, color: statusColor, bg: statusBg } = STATUS_CONFIG[project.status];
 
   // 프로젝트 컬러
-  const dotColor = project.color === "blue" ? C.primary
-    : project.color === "purple" ? C.purple
-      : C.success;
+  const dotColor = project.color;
 
   return (
     <TouchableOpacity

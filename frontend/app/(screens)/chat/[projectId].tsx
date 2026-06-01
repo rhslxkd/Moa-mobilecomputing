@@ -56,6 +56,55 @@ const ROOM_NAMES: Record<string, string> = {
   p1: "이지은",
 };
 
+const PINNED_ITEMS = [
+  { type: "공지", icon: "📣", title: "공지 제목", desc: "공지내용공지내용공지내용공지내용공지내용공지내용공지내용공지내용..." },
+  { type: "투표", icon: "☑️", title: "투표 제목", desc: "투표가 진행 중입니다. 참여해주세요." },
+  { type: "일정", icon: "📅", title: "일정 조율 제목", desc: "일정 조율이 진행 중입니다. 참여해주세요." },
+];
+
+function PinnedCards() {
+  const [dismissed, setDismissed] = useState<number[]>([]);
+  const visible = PINNED_ITEMS.filter((_, i) => !dismissed.includes(i));
+  if (visible.length === 0) return null;
+  return (
+    <View style={{ backgroundColor: "#F9FAFB", paddingVertical: 8, gap: 6, paddingHorizontal: 12 }}>
+      {visible.map((item, idx) => {
+        const origIdx = PINNED_ITEMS.indexOf(item);
+        return (
+          <View key={origIdx} style={pinnedStyles.card}>
+            <Text style={pinnedStyles.icon}>{item.icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={pinnedStyles.title}>{item.title}</Text>
+              <Text style={pinnedStyles.desc} numberOfLines={1}>{item.desc}</Text>
+            </View>
+            <TouchableOpacity onPress={() => setDismissed(prev => [...prev, origIdx])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={pinnedStyles.close}>×</Text>
+            </TouchableOpacity>
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
+const pinnedStyles = StyleSheet.create({
+  card: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    gap: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: "#E5E7EB",
+  },
+  icon: { fontSize: 18 },
+  title: { fontSize: 13, fontWeight: "600", color: "#111", marginBottom: 2 },
+  desc: { fontSize: 12, color: "#6B7280" },
+  close: { fontSize: 18, color: "#9CA3AF", lineHeight: 22 },
+});
+
 export default function ChatDetailScreen() {
   const C = useTheme();
   const router = useRouter();
@@ -153,6 +202,9 @@ export default function ChatDetailScreen() {
             </View>
           </View>
         )}
+
+        {/* 공지/투표/일정 알림 카드 */}
+        <PinnedCards />
 
         {/* 메시지 리스트 */}
         <FlatList

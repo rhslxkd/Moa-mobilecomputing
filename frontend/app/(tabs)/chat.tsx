@@ -9,6 +9,7 @@ import {
   Linking,
   Animated,
   Alert,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -201,6 +202,8 @@ export default function ChatScreen() {
   const router = useRouter();
   const [filter, setFilter] = useState<FilterType>("all");
   const [rooms, setRooms] = useState<ChatRoom[]>(INITIAL_ROOMS);
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const handleToggleUnread = (id: string) => {
     setRooms(prev => prev.map(r => r.id === id ? { ...r, unread: r.unread > 0 ? 0 : 1 } : r));
@@ -229,7 +232,9 @@ export default function ChatScreen() {
     return 0;
   });
 
-  const filtered = filter === "unread" ? sortedRooms.filter((r) => r.unread > 0) : sortedRooms;
+  const filtered = sortedRooms
+    .filter((r) => filter === "unread" ? r.unread > 0 : true)
+    .filter((r) => searchQuery.trim() ? r.name.toLowerCase().includes(searchQuery.toLowerCase()) : true);
 
   const FILTER_TABS: { id: FilterType, label: string }[] = [
     { id: "all", label: "전체" },
@@ -245,8 +250,15 @@ export default function ChatScreen() {
           <Text style={[styles.headerTitle, { color: C.text }]}>채팅</Text>
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
-            <Icon name="search" size={24} color={C.text} />
+          <TouchableOpacity
+            style={styles.iconBtn}
+            activeOpacity={0.7}
+            onPress={() => {
+              setSearchVisible(v => !v);
+              if (searchVisible) setSearchQuery("");
+            }}
+          >
+            <Icon name="search" size={24} color={searchVisible ? C.primary : C.text} />
           </TouchableOpacity>
           <TouchableOpacity 
             style={styles.iconBtn} 
@@ -260,6 +272,26 @@ export default function ChatScreen() {
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* 검색바 */}
+      {searchVisible && (
+        <View style={[styles.searchBar, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
+          <Icon name="search" size={18} color={C.textMuted} />
+          <TextInput
+            autoFocus
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholder="채팅방 검색"
+            placeholderTextColor={C.textMuted}
+            style={[styles.searchInput, { color: C.text }]}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery("")} activeOpacity={0.7}>
+              <Icon name="close" size={18} color={C.textMuted} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
 
       {/* 필터 칩 (스크롤) */}
       <View style={{ backgroundColor: C.bgCard, paddingVertical: 8 }}>
@@ -391,6 +423,19 @@ const styles = StyleSheet.create({
   },
   badgeText: { color: "#FFFFFF", fontSize: 11, fontWeight: "700" },
   emptyContainer: { flex: 1, alignItems: "center", paddingTop: 80 },
+  searchBar: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 15,
+    paddingVertical: 0,
+  },
   leftActions: {
     flexDirection: 'row',
   },

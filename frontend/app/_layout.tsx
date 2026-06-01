@@ -70,6 +70,14 @@ export default function RootLayout() {
           <Stack.Screen name="(screens)/qr/scan" options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
           {/* 리포트 */}
           <Stack.Screen name="(screens)/report/[projectId]" options={{ presentation: "card" }} />
+          {/* 설정 / 친구 / 드라이브 / 프로필수정 / 아이디비번변경 */}
+          <Stack.Screen name="(screens)/settings"            options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/friends/index"       options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/drive/index"           options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/drive/[folderId]"    options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/profile-edit"        options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/change-credentials"  options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/AddChat"             options={{ presentation: "card" }} />
           <Stack.Screen name="+not-found" />
         </Stack>
       </ProjectProvider>

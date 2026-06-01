@@ -24,7 +24,7 @@ export interface Todo {
   title: string;
   projectId: string;
   projectName: string;
-  projectColor: "blue" | "purple" | "green";
+  projectColor: string;
   dueDate: string;    // "YYYY-MM-DD"
   daysLeft: number;   // 음수면 기한 초과
   done: boolean;
@@ -42,19 +42,8 @@ export default function TodoItem({ todo, onToggle }: TodoItemProps) {
   const isUrgent = !todo.done && todo.daysLeft <= 3;
   const isOverdue = !todo.done && todo.daysLeft < 0;
 
-  const PROJECT_COLOR: Record<string, string> = {
-    blue:   C.primary,
-    purple: C.purple,
-    green:  C.success,
-  };
-  const PROJECT_BG: Record<string, string> = {
-    blue:   C.primaryBg,
-    purple: C.purpleBg,
-    green:  C.successBg,
-  };
-
-  const tagColor = PROJECT_COLOR[todo.projectColor] ?? C.primary;
-  const tagBg    = PROJECT_BG[todo.projectColor]   ?? C.primaryBg;
+  const tagColor = todo.projectColor || C.primary;
+  const tagBg    = todo.projectColor ? todo.projectColor + "20" : C.primaryBg;
 
   const dueDateLabel = isOverdue
     ? `D+${Math.abs(todo.daysLeft)}`

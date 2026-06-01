@@ -29,12 +29,6 @@ const HOURS = Array.from({ length: 12 }, (_, i) => String(i + 1).padStart(2, "0"
 const MINUTES = Array.from({ length: 60 }, (_, i) => String(i).padStart(2, "0"));
 const AMPM = ["오전", "오후"];
 
-const PROJECT_COLOR: Record<string, string> = {
-  blue: "#00A9EC",
-  purple: "#7C3AED",
-  green: "#16A34A",
-};
-
 // ── 아이콘 ────────────────────────────────
 function BackIcon({ color }: { color: string }) {
   return (
@@ -459,7 +453,7 @@ function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) {
         {/* 프로젝트 아바타 */}
         <View style={[
           projStyles.avatar,
-          { backgroundColor: selected ? PROJECT_COLOR[selected.color] + "30" : C.bgMuted },
+          { backgroundColor: selected ? selected.color + "30" : C.bgMuted },
         ]}>
           {selected
             ? <Text style={projStyles.avatarEmoji}>{selected.emoji}</Text>
@@ -482,7 +476,7 @@ function ProjectSelector({ selectedId, onSelect }: ProjectSelectorProps) {
             onPress={() => { onSelect(p.id); setOpen(false); }}
             style={[projStyles.dropRow, { borderBottomColor: C.border }]}
           >
-            <View style={[projStyles.avatar, { backgroundColor: PROJECT_COLOR[p.color] + "30" }]}>
+            <View style={[projStyles.avatar, { backgroundColor: p.color + "30" }]}>
               <Text style={projStyles.avatarEmoji}>{p.emoji}</Text>
             </View>
             <Text style={[projStyles.name, { color: C.text, flex: 1 }]} numberOfLines={1}>

@@ -29,10 +29,14 @@ interface MeetingHistoryItemProps {
 
 function MeetingHistoryItem({ index, onOption }: MeetingHistoryItemProps) {
   const C = useTheme();
+  const router = useRouter();
   const MEETINGS = [
-    { title: "스프린트 1 리뷰", date: "2026.03.28", duration: "1시간 12분", members: 4 },
-    { title: "백엔드 API 설계 논의", date: "2026.03.24", duration: "45분", members: 3 },
-    { title: "킥오프 미팅", date: "2026.03.18", duration: "2시간 05분", members: 5 },
+    { title: "중간 발표 준비 회의", date: "2026년 3월 10일", duration: "1시간 30분", members: 4,
+      summary: ["AI 요약 내용", "AI 요약 내용", "AI 요약 내용"] },
+    { title: "백엔드 API 설계 논의", date: "2026년 3월 7일", duration: "45분", members: 3,
+      summary: ["API 설계 확정", "담당자 분배 완료", "다음 회의 일정 조율"] },
+    { title: "킥오프 미팅", date: "2026년 3월 3일", duration: "2시간 05분", members: 5,
+      summary: ["프로젝트 목표 설정", "역할 분담 완료", "일정 수립"] },
   ];
   const m = MEETINGS[index % MEETINGS.length];
 
@@ -41,15 +45,33 @@ function MeetingHistoryItem({ index, onOption }: MeetingHistoryItemProps) {
       activeOpacity={0.75}
       style={[styles.historyItem, { backgroundColor: C.bgCard, borderColor: C.border }]}
     >
-      <View style={{ flex: 1 }}>
-        <Text style={[styles.historyTitle, { color: C.text }]}>{m.title}</Text>
-        <Text style={[styles.historyMeta, { color: C.textMuted }]}>
-          {m.date} · {m.duration} · 참여 {m.members}명
-        </Text>
+      <View style={{ flex: 1, gap: 8 }}>
+        <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
+          <View style={{ flex: 1 }}>
+            <Text style={[styles.historyTitle, { color: C.text }]}>{m.title}</Text>
+            <Text style={[styles.historyDate, { color: C.primary }]}>{m.date}  {m.duration}</Text>
+          </View>
+          <TouchableOpacity onPress={onOption} activeOpacity={0.7} style={styles.historyOption}>
+            <Icon name="option" size={20} color={C.textMuted} />
+          </TouchableOpacity>
+        </View>
+        <View style={[styles.summaryBox, { borderColor: C.primary + "40", backgroundColor: C.primary + "08" }]}>
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+            <Icon name="file" size={14} color={C.primary} />
+            <Text style={[styles.summaryTitle, { color: C.primary }]}>AI 요약</Text>
+          </View>
+          {m.summary.map((line, i) => (
+            <Text key={i} style={[styles.summaryLine, { color: C.textSub }]}>{line}</Text>
+          ))}
+          <TouchableOpacity
+            style={styles.detailBtn}
+            activeOpacity={0.7}
+            onPress={() => router.push("/(screens)/meeting/recording" as any)}
+          >
+            <Text style={[styles.detailText, { color: C.textMuted }]}>자세히 보기  &gt;</Text>
+          </TouchableOpacity>
+        </View>
       </View>
-      <TouchableOpacity onPress={onOption} activeOpacity={0.7} style={styles.historyOption}>
-        <Icon name="option" size={20} color={C.textMuted} />
-      </TouchableOpacity>
     </TouchableOpacity>
   );
 }
@@ -64,8 +86,11 @@ export default function MeetingScreen() {
     <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
       {/* 헤더 */}
       <View style={[styles.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
-        <View style={styles.headerLeft}>
-          <Text style={[styles.headerSub, { color: C.textMuted }]}>회의 ·</Text>
+        <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} activeOpacity={0.7}>
+          <Icon name="back" size={22} color={C.text} />
+        </TouchableOpacity>
+        <View style={styles.headerCenter}>
+          <Text style={[styles.headerSub, { color: C.textMuted }]}>회의 · </Text>
           <Text style={[styles.headerTitle, { color: C.text }]} numberOfLines={1}>
             {currentProject.name}
           </Text>
@@ -75,7 +100,7 @@ export default function MeetingScreen() {
           activeOpacity={0.7}
           onPress={() => setOptionOpen(true)}
         >
-          <Icon name="option" size={22} color={C.textSub} />
+          <Icon name="settings" size={22} color={C.textSub} />
         </TouchableOpacity>
       </View>
 
@@ -132,15 +157,27 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
+    paddingHorizontal: 8,
+    paddingVertical: 12,
     borderBottomWidth: 1,
   },
-  headerLeft: { flexDirection: "row", alignItems: "center", gap: 4, flex: 1 },
+  headerCenter: { flex: 1, flexDirection: "row", alignItems: "center", paddingHorizontal: 4 },
   headerSub: { fontSize: 15, fontWeight: "400" },
   headerTitle: { fontSize: 15, fontWeight: "600", flex: 1 },
-  iconBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
+  iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
+
+  // 회의 이력 카드
+  historyDate: { fontSize: 12, marginTop: 2 },
+  summaryBox: {
+    borderRadius: 10,
+    borderWidth: 1,
+    padding: 12,
+    gap: 3,
+  },
+  summaryTitle: { fontSize: 13, fontWeight: "600" },
+  summaryLine: { fontSize: 13, lineHeight: 20 },
+  detailBtn: { alignSelf: "flex-end", marginTop: 4 },
+  detailText: { fontSize: 12 },
 
   body: { padding: 16, gap: 16, paddingBottom: 40 },
 
@@ -178,11 +215,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 1,
     padding: 16,
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 12,
   },
-  historyTitle: { fontSize: 15, fontWeight: "600", marginBottom: 4 },
-  historyMeta: { fontSize: 12 },
+  historyTitle: { fontSize: 15, fontWeight: "600", marginBottom: 2 },
   historyOption: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
 });

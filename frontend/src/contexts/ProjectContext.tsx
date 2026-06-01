@@ -18,14 +18,14 @@ import React, {
 export interface Member {
   id: string;
   name: string;
-  role: string; // 예: "팀장", "개발자", "디자이너"
+  roles: string[]; // 예: ["팀장", "개발자"]
 }
 
 export interface Project {
   id: string;
   name: string;
   emoji: string;
-  color: "blue" | "purple" | "green";
+  color: string; // hex color (e.g. "#00A9EC")
   members: Member[];
   memberCount: number; // members.length 캐시 (카드 표시용)
   startDate: string;   // "YYYY.MM.DD"
@@ -51,13 +51,13 @@ const MOCK_PROJECTS: Project[] = [
     id: "1",
     name: "AI 챗봇 개발 프로젝트",
     emoji: "🤖",
-    color: "blue",
+    color: "#00A9EC",
     members: [
-      { id: "m1", name: "박지민", role: "팀장" },
-      { id: "m2", name: "이수현", role: "개발자" },
-      { id: "m3", name: "김태양", role: "개발자" },
-      { id: "m4", name: "최아린", role: "디자이너" },
-      { id: "m5", name: "정우진", role: "기획자" },
+      { id: "m1", name: "박지민", roles: ["팀장", "기획자"] },
+      { id: "m2", name: "이수현", roles: ["개발자"] },
+      { id: "m3", name: "김태양", roles: ["개발자", "QA"] },
+      { id: "m4", name: "최아린", roles: ["디자이너"] },
+      { id: "m5", name: "정우진", roles: ["기획자"] },
     ],
     memberCount: 5,
     startDate: "2026.02.01",
@@ -71,12 +71,12 @@ const MOCK_PROJECTS: Project[] = [
     id: "2",
     name: "모바일 앱 디자인",
     emoji: "📱",
-    color: "purple",
+    color: "#7C3AED",
     members: [
-      { id: "m1", name: "박지민", role: "팀장" },
-      { id: "m6", name: "한소희", role: "디자이너" },
-      { id: "m7", name: "오민준", role: "개발자" },
-      { id: "m8", name: "윤서연", role: "기획자" },
+      { id: "m1", name: "박지민", roles: ["팀장"] },
+      { id: "m6", name: "한소희", roles: ["디자이너", "기획자"] },
+      { id: "m7", name: "오민준", roles: ["개발자"] },
+      { id: "m8", name: "윤서연", roles: ["기획자"] },
     ],
     memberCount: 4,
     startDate: "2026.03.01",
@@ -90,11 +90,11 @@ const MOCK_PROJECTS: Project[] = [
     id: "3",
     name: "데이터 분석 프로젝트",
     emoji: "📊",
-    color: "green",
+    color: "#16A34A",
     members: [
-      { id: "m1", name: "박지민", role: "팀장" },
-      { id: "m9", name: "강다은", role: "데이터 분석" },
-      { id: "m10", name: "임현우", role: "개발자" },
+      { id: "m1", name: "박지민", roles: ["팀장"] },
+      { id: "m9", name: "강다은", roles: ["데이터 분석", "개발자"] },
+      { id: "m10", name: "임현우", roles: ["개발자"] },
     ],
     memberCount: 3,
     startDate: "2025.12.15",
