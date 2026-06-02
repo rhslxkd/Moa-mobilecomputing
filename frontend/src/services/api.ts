@@ -9,7 +9,7 @@
  *   - 실제 기기: "http://[내 맥 IP]:8000"  (예: "http://192.168.0.5:8000")
  */
 
-export const BASE_URL = "http://127.0.0.1:8000";
+export const BASE_URL = "http://192.168.0.13:8000";
 
 // ── 토큰 인메모리 저장소 ────────────────────────────────────────
 // 앱 재시작 시 초기화됨. 실제 운영 시 expo-secure-store 사용 권장.
@@ -173,4 +173,61 @@ export const AuthAPI = {
       { method: "POST", body: JSON.stringify(body) },
       resetToken,
     ),
+};
+
+// ── Projects API ───────────────────────────────────────────
+export interface MemberDTO {
+  id: string;
+  name: string;
+  roles: string[];
+}
+
+export interface ProjectDTO {
+  id: string;
+  name: string;
+  emoji: string;
+  color: string;
+  status: "active" | "upcoming" | "completed";
+  start_date: string;      // "YYYY.MM.DD"
+  end_date: string;        // "YYYY.MM.DD"
+  days_left: number;
+  member_count: number;
+  members: MemberDTO[];
+  has_chat_alert: boolean;
+  has_todo_alert: boolean;
+}
+
+export interface ProjectCreateBody {
+  name: string;
+  emoji: string;
+  color: string;
+  status: "active" | "upcoming" | "completed";
+  start_date: string;      // "YYYY.MM.DD"
+  end_date: string;        // "YYYY.MM.DD"
+  members: { name: string; roles: string[] }[];
+}
+
+export type ProjectUpdateBody = Partial<ProjectCreateBody>;
+
+export const ProjectAPI = {
+  list: () =>
+    request<ProjectDTO[]>("/projects", { method: "GET" }),
+
+  create: (body: ProjectCreateBody) =>
+    request<ProjectDTO>("/projects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  get: (id: string) =>
+    request<ProjectDTO>(`/projects/${id}`, { method: "GET" }),
+
+  update: (id: string, body: ProjectUpdateBody) =>
+    request<ProjectDTO>(`/projects/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  delete: (id: string) =>
+    request<void>(`/projects/${id}`, { method: "DELETE" }),
 };

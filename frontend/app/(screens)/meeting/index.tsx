@@ -92,7 +92,7 @@ export default function MeetingScreen() {
         <View style={styles.headerCenter}>
           <Text style={[styles.headerSub, { color: C.textMuted }]}>회의 · </Text>
           <Text style={[styles.headerTitle, { color: C.text }]} numberOfLines={1}>
-            {currentProject.name}
+            {currentProject?.name ?? "회의"}
           </Text>
         </View>
         <TouchableOpacity

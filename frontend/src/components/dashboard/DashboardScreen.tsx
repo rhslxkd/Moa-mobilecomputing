@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -94,8 +94,12 @@ export default function DashboardScreen() {
   const isDark = useIsDark();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { projects, currentProject, setCurrentProject } = useProject();
+  const { projects, loading, loadProjects, currentProject, setCurrentProject } = useProject();
   const { user } = useAuth();
+
+  useEffect(() => {
+    loadProjects();
+  }, []);
   const displayName = user?.fullName || user?.username || "";
   const s = makeStyles(C, isDark, insets);
   const [alarmOpen, setAlarmOpen] = useState(false);
@@ -170,7 +174,7 @@ export default function DashboardScreen() {
             <ProjectCard
               key={project.id}
               project={project}
-              isSelected={project.id === currentProject.id}
+              isSelected={project.id === currentProject?.id}
               onSelect={() => {
                 setCurrentProject(project);
                 router.push(`/(screens)/project/${project.id}`);

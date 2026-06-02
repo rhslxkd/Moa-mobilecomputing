@@ -4,8 +4,9 @@ import {
   View,
   StyleSheet,
   Platform,
+  Alert,
 } from "react-native";
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { SvgXml } from "react-native-svg";
 import { useTheme, useIsDark } from "../../src/hooks/useTheme";
 import NewItemModal from "../../src/components/modals/NewItemModal";
@@ -199,10 +200,14 @@ export default function TabsLayout() {
       <ProjectCreateSheet
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onCreate={(project) => {
-          addProject(project);
-          setIsCreateOpen(false);
-          router.push(`/(screens)/project/${project.id}` as any);
+        onCreate={async (project) => {
+          try {
+            const created = await addProject(project);
+            setIsCreateOpen(false);
+            router.push(`/(screens)/project/${created.id}` as any);
+          } catch {
+            Alert.alert("오류", "프로젝트 생성에 실패했습니다. 다시 시도해주세요.");
+          }
         }}
       />
     </>
