@@ -21,6 +21,7 @@ import Svg, { Path, Circle, Polyline } from "react-native-svg";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
+import { TodoAPI } from "@/services/api";
 
 // ── 상수 ──────────────────────────────────
 const DAY_KO = ["일", "월", "화", "수", "목", "금", "토"];
@@ -570,6 +571,18 @@ export default function AddTodoScreen() {
 
   const canSave = title.trim().length > 0 && (tab === "personal" || !!selectedProjectId);
 
+  const handleSave = async () => {
+    if (!canSave) return;
+    await TodoAPI.create({
+      title: title.trim(),
+      description: description.trim() || undefined,
+      project_id: tab === "project" ? selectedProjectId ?? undefined : undefined,
+      due_date: endDate.toISOString().split("T")[0],
+      start_date: startDate.toISOString().split("T")[0],
+    });
+    router.back();
+  };
+
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
       {/* 헤더 */}
@@ -585,7 +598,7 @@ export default function AddTodoScreen() {
           <TouchableOpacity
             style={s.iconBtn}
             activeOpacity={0.7}
-            onPress={() => { if (canSave) router.back(); }}
+            onPress={handleSave}
           >
             <PlusIcon color={canSave ? C.primary : C.textMuted} />
           </TouchableOpacity>

@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,16 @@ import {
   Platform,
   UIManager,
   TextInput,
+  Alert,
+  Modal,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Polyline } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import { useRouter } from "expo-router";
+import { TodoAPI } from "@/services/api";
+import { useFocusEffect } from "expo-router";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
 
@@ -218,9 +222,10 @@ interface Todo {
 
 // ── 투두 아이템 ───────────────────────────
 // isDateMatch: 선택된 날짜와 dueDate가 일치할 때만 펼침 화살표 + D-day 뱃지 표시
-function TodoItem({ todo, onToggle, accentColor, isDateMatch }: {
+function TodoItem({ todo, onToggle, onLongPress, accentColor, isDateMatch }: {
   todo: Todo;
   onToggle: (id: string) => void;
+  onLongPress: (id: string) => void;
   accentColor: string;
   isDateMatch: boolean;
 }) {
@@ -237,7 +242,7 @@ function TodoItem({ todo, onToggle, accentColor, isDateMatch }: {
 
   return (
     <View style={[todoS.wrap, { borderBottomColor: C.border }]}>
-      <TouchableOpacity onPress={toggleExpand} activeOpacity={canExpand ? 0.7 : 1} style={todoS.row}>
+      <TouchableOpacity onPress={toggleExpand} onLongPress={() => onLongPress(todo.id)} activeOpacity={canExpand ? 0.7 : 1} style={todoS.row}>
         {/* 체크박스 */}
         <TouchableOpacity
           onPress={() => onToggle(todo.id)}
@@ -316,12 +321,13 @@ const todoS = StyleSheet.create({
 });
 
 // ── 프로젝트 섹션 ─────────────────────────
-function ProjectSection({ projectName, projectColor, pendingTodos, doneTodos, onToggle, selectedDateKey }: {
+function ProjectSection({ projectName, projectColor, pendingTodos, doneTodos, onToggle, onLongPress, selectedDateKey }: {
   projectName: string;
   projectColor: string;
   pendingTodos: Todo[];
   doneTodos: Todo[];
   onToggle: (id: string) => void;
+  onLongPress: (id: string) => void;
   selectedDateKey: string;
 }) {
   const C = useTheme();
@@ -358,6 +364,7 @@ function ProjectSection({ projectName, projectColor, pendingTodos, doneTodos, on
               key={t.id}
               todo={t}
               onToggle={onToggle}
+              onLongPress={onLongPress}
               accentColor={projectColor}
               isDateMatch={t.dueDate === selectedDateKey}
             />
@@ -378,6 +385,7 @@ function ProjectSection({ projectName, projectColor, pendingTodos, doneTodos, on
                   key={t.id}
                   todo={t}
                   onToggle={onToggle}
+                  onLongPress={onLongPress}
                   accentColor={projectColor}
                   isDateMatch={t.dueDate === selectedDateKey}
                 />
@@ -426,31 +434,61 @@ const secS = StyleSheet.create({
   empty: { textAlign: "center", fontSize: 13, paddingVertical: 12 },
 });
 
-// ── Mock 데이터 ───────────────────────────
-const INITIAL_TODOS: Todo[] = [
-  { id: "1", title: "API 엔드포인트 설계 문서 작성",  projectId: "1", projectName: "AI 챗봇 개발",     done: false, dueDate: "2026-04-09",
-    description: "할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명할 일 설명." },
-  { id: "2", title: "스프린트 리뷰 발표 자료 준비",   projectId: "1", projectName: "AI 챗봇 개발",     done: false, dueDate: "2026-04-12" },
-  { id: "3", title: "메인 화면 피그마 컴포넌트 완성", projectId: "2", projectName: "모바일 앱 디자인", done: false, dueDate: "2026-04-10" },
-  { id: "4", title: "데이터 전처리 스크립트 검토",    projectId: "3", projectName: "데이터 분석",      done: false, dueDate: "2026-04-11" },
-  { id: "5", title: "아이콘 에셋 정리",               projectId: "2", projectName: "모바일 앱 디자인", done: true,  dueDate: "2026-04-08" },
-  { id: "6", title: "모델 성능 평가 보고서 작성",     projectId: "1", projectName: "AI 챗봇 개발",     done: true,  dueDate: "2026-04-07" },
-];
 
 // ── 메인 화면 ──────────────────────────────
 export default function TodosScreen() {
   const C = useTheme();
   const router = useRouter();
   const { projects } = useProject();
-  const [todos, setTodos] = useState<Todo[]>(INITIAL_TODOS);
+  const [todos, setTodos] = useState<Todo[]>([]);
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [editTarget, setEditTarget] = useState<Todo | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+
+  useFocusEffect(
+    useCallback(() => {
+      TodoAPI.list().then(dtos => {
+        setTodos(dtos.map(d => ({
+          id: d.id,
+          title: d.title,
+          description: d.description ?? undefined,
+          projectId: d.project_id ?? "personal",
+          projectName: d.project_name ?? "개인",
+          done: d.done,
+          dueDate: d.due_date ?? new Date().toISOString().split("T")[0],
+        })));
+      }).catch(() => {});
+    }, [])
+  );
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const selectedDateKey = toDateKey(selectedDate);
 
-  const toggleTodo = (id: string) => {
+  const toggleTodo = async (id: string) => {
     setTodos(prev => prev.map(t => t.id === id ? { ...t, done: !t.done } : t));
+    await TodoAPI.toggleDone(id).catch(() => {});
+  };
+
+  const handleLongPress = (id: string) => {
+    const todo = todos.find(t => t.id === id);
+    if (!todo) return;
+    setEditTarget(todo);
+    setEditTitle(todo.title);
+  };
+
+  const handleEditSave = async () => {
+    if (!editTarget || !editTitle.trim()) return;
+    setTodos(prev => prev.map(t => t.id === editTarget.id ? { ...t, title: editTitle.trim() } : t));
+    await TodoAPI.update(editTarget.id, { title: editTitle.trim() }).catch(() => {});
+    setEditTarget(null);
+  };
+
+  const handleDelete = async () => {
+    if (!editTarget) return;
+    setTodos(prev => prev.filter(t => t.id !== editTarget.id));
+    await TodoAPI.delete(editTarget.id).catch(() => {});
+    setEditTarget(null);
   };
 
   const todosByDate = useMemo(() => {
@@ -476,10 +514,35 @@ export default function TodosScreen() {
     doneTodos:    filteredTodos.filter(t => t.projectId === project.id && t.done),
   })).filter(g => g.pendingTodos.length > 0 || g.doneTodos.length > 0), [filteredTodos, projects]);
 
+  const personalPending = useMemo(() => filteredTodos.filter(t => t.projectId === "personal" && !t.done), [filteredTodos]);
+  const personalDone    = useMemo(() => filteredTodos.filter(t => t.projectId === "personal" && t.done),  [filteredTodos]);
+
   const dateLabel = `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일`;
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
+      {/* 수정/삭제 모달 */}
+      <Modal visible={!!editTarget} transparent animationType="fade" onRequestClose={() => setEditTarget(null)}>
+        <TouchableOpacity style={modalS.overlay} activeOpacity={1} onPress={() => setEditTarget(null)}>
+          <TouchableOpacity activeOpacity={1} style={[modalS.sheet, { backgroundColor: C.bgCard }]}>
+            <Text style={[modalS.sheetTitle, { color: C.text }]}>할 일 수정</Text>
+            <TextInput
+              style={[modalS.input, { color: C.text, borderColor: C.border, backgroundColor: C.bg }]}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={handleEditSave}
+            />
+            <TouchableOpacity style={[modalS.saveBtn, { backgroundColor: C.primary }]} onPress={handleEditSave} activeOpacity={0.8}>
+              <Text style={modalS.saveBtnText}>저장</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[modalS.deleteBtn, { borderColor: C.border }]} onPress={handleDelete} activeOpacity={0.8}>
+              <Text style={[modalS.deleteBtnText, { color: "#DC2626" }]}>삭제</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
       <View style={[s.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
         <View style={s.headerLeft}>
           <MoaLogo size={32} />
@@ -536,18 +599,33 @@ export default function TodosScreen() {
           </View>
         )}
 
-        {activeGroups.length > 0 ? (
-          activeGroups.map(({ project, pendingTodos, doneTodos }) => (
-            <ProjectSection
-              key={project.id}
-              projectName={project.name}
-              projectColor={project.color}
-              pendingTodos={pendingTodos}
-              doneTodos={doneTodos}
-              onToggle={toggleTodo}
-              selectedDateKey={selectedDateKey}
-            />
-          ))
+        {activeGroups.length > 0 || personalPending.length > 0 || personalDone.length > 0 ? (
+          <>
+            {(personalPending.length > 0 || personalDone.length > 0) && (
+              <ProjectSection
+                key="personal"
+                projectName="개인"
+                projectColor={C.primary}
+                pendingTodos={personalPending}
+                doneTodos={personalDone}
+                onToggle={toggleTodo}
+                onLongPress={handleLongPress}
+                selectedDateKey={selectedDateKey}
+              />
+            )}
+            {activeGroups.map(({ project, pendingTodos, doneTodos }) => (
+              <ProjectSection
+                key={project.id}
+                projectName={project.name}
+                projectColor={project.color}
+                pendingTodos={pendingTodos}
+                doneTodos={doneTodos}
+                onToggle={toggleTodo}
+                onLongPress={handleLongPress}
+                selectedDateKey={selectedDateKey}
+              />
+            ))}
+          </>
         ) : (
           <View style={s.emptyWrap}>
             <Text style={s.emptyEmoji}>🎉</Text>
@@ -594,4 +672,41 @@ const s = StyleSheet.create({
     fontSize: 15,
     paddingVertical: 0,
   },
+});
+
+const modalS = StyleSheet.create({
+  overlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.4)",
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 24,
+  },
+  sheet: {
+    width: "100%",
+    borderRadius: 20,
+    padding: 24,
+    gap: 12,
+  },
+  sheetTitle: { fontSize: 17, fontWeight: "700", marginBottom: 4 },
+  input: {
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 11,
+    fontSize: 15,
+  },
+  saveBtn: {
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: "center",
+  },
+  saveBtnText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  deleteBtn: {
+    borderRadius: 12,
+    paddingVertical: 13,
+    alignItems: "center",
+    borderWidth: 1,
+  },
+  deleteBtnText: { fontSize: 15, fontWeight: "600" },
 });

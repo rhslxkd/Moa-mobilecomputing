@@ -3,7 +3,7 @@
  * 프로젝트 팀 투두 — 팀원별로 묶어 표시 + 캘린더 필터
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   View,
   Text,
@@ -19,6 +19,7 @@ import Svg, { Path, Polyline } from "react-native-svg";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
+import { TodoAPI } from "@/services/api";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -49,29 +50,7 @@ function getDday(d: Date): { label: string; color: string; bg: string } {
   return                  { label: `D+${Math.abs(diff)}`,   color: "#DC2626", bg: "#FEE2E2" };
 }
 
-// ── Mock 투두 ─────────────────────────────
-const TODO_POOL: Record<string, string[]> = {
-  팀장:          ["스프린트 계획 수립", "팀 주간 회의 진행", "프로젝트 일정 업데이트", "리스크 관리 문서 작성"],
-  개발자:        ["API 엔드포인트 개발", "단위 테스트 작성", "코드 리뷰 진행", "버그 수정 및 배포", "기술 문서 업데이트"],
-  디자이너:      ["UI 컴포넌트 제작", "피그마 프로토타입 수정", "사용자 인터뷰 분석", "디자인 시스템 정리"],
-  기획자:        ["요구사항 명세서 작성", "사용자 스토리 정의", "경쟁사 분석 보고서", "기능 우선순위 정리"],
-  "데이터 분석": ["데이터 전처리 스크립트 작성", "모델 성능 평가", "분석 결과 시각화"],
-  QA:            ["테스트 시나리오 작성", "회귀 테스트 수행", "버그 리포트 정리"],
-};
-
 interface TodoItem { id: string; title: string; done: boolean; dueDate: Date }
-
-function getMockTodos(memberId: string, role: string): TodoItem[] {
-  const pool = TODO_POOL[role] ?? TODO_POOL["개발자"];
-  const seed = memberId.split("").reduce((a, c) => a + c.charCodeAt(0), 0);
-  const count = 2 + (seed % 3);
-  const doneCount = seed % 2;
-  return pool.slice(0, count + doneCount).map((title, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + (seed % 5) + i * 2);
-    return { id: `${memberId}-${i}`, title, done: i >= count, dueDate: d };
-  });
-}
 
 // ── 아이콘 ────────────────────────────────
 function BackIcon({ color }: { color: string }) {
@@ -330,18 +309,33 @@ export default function ProjectTodosScreen() {
   const project = projects.find(p => p.id === projectId);
   const accent = project ? project.color : C.primary;
 
-  const [todoMap, setTodoMap] = useState<Record<string, TodoItem[]>>(() => {
-    if (!project) return {};
-    return Object.fromEntries(project.members.map(m => [m.id, getMockTodos(m.id, m.roles[0] ?? "개발자")]));
-  });
-
+  const [todoMap, setTodoMap] = useState<Record<string, TodoItem[]>>({});
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  const toggleTodo = (memberId: string, todoId: string) => {
+  useEffect(() => {
+    if (!projectId) return;
+    TodoAPI.listByProject(projectId).then(dtos => {
+      const map: Record<string, TodoItem[]> = {};
+      dtos.forEach(d => {
+        const key = d.assignee_member_id ?? "__unassigned__";
+        if (!map[key]) map[key] = [];
+        map[key].push({
+          id: d.id,
+          title: d.title,
+          done: d.done,
+          dueDate: d.due_date ? new Date(d.due_date) : new Date(),
+        });
+      });
+      setTodoMap(map);
+    }).catch(() => {});
+  }, [projectId]);
+
+  const toggleTodo = async (memberId: string, todoId: string) => {
     setTodoMap(prev => ({
       ...prev,
-      [memberId]: prev[memberId].map(t => t.id === todoId ? { ...t, done: !t.done } : t),
+      [memberId]: (prev[memberId] ?? []).map(t => t.id === todoId ? { ...t, done: !t.done } : t),
     }));
+    await TodoAPI.toggleDone(todoId).catch(() => {});
   };
 
   const allTodos = useMemo(() => Object.values(todoMap).flat(), [todoMap]);
@@ -435,15 +429,26 @@ export default function ProjectTodosScreen() {
 
         {/* 멤버별 섹션 */}
         {hasAny ? (
-          project.members.map(member => (
-            <MemberSection
-              key={member.id}
-              member={member}
-              todos={filteredMap[member.id] ?? []}
-              accent={accent}
-              onToggle={(todoId) => toggleTodo(member.id, todoId)}
-            />
-          ))
+          <>
+            {project.members.map(member => (
+              <MemberSection
+                key={member.id}
+                member={member}
+                todos={filteredMap[member.id] ?? []}
+                accent={accent}
+                onToggle={(todoId) => toggleTodo(member.id, todoId)}
+              />
+            ))}
+            {(filteredMap["__unassigned__"] ?? []).length > 0 && (
+              <MemberSection
+                key="__unassigned__"
+                member={{ id: "__unassigned__", name: "미배정", roles: [] }}
+                todos={filteredMap["__unassigned__"]}
+                accent={accent}
+                onToggle={(todoId) => toggleTodo("__unassigned__", todoId)}
+              />
+            )}
+          </>
         ) : (
           <View style={s.emptyWrap}>
             <Text style={s.emptyEmoji}>🎉</Text>

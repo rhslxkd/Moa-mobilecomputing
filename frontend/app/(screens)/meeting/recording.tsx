@@ -26,6 +26,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
+import { useProject } from "@/contexts/ProjectContext";
+import { MeetingAPI } from "@/services/api";
 
 // ── 파형 막대 애니메이션 ────────────────────
 function WaveBar({ delay }: { delay: number }) {
@@ -105,6 +107,7 @@ const PARTICIPANTS = [
 export default function MeetingRecordingScreen() {
   const C = useTheme();
   const router = useRouter();
+  const { currentProject } = useProject();
 
   // 녹음 타이머
   const [seconds, setSeconds] = useState(0);
@@ -133,8 +136,17 @@ export default function MeetingRecordingScreen() {
         {
           text: "종료하기",
           style: "destructive",
-          onPress: () => {
+          onPress: async () => {
             setIsRecording(false);
+            const title = new Date().toLocaleDateString("ko-KR", {
+              year: "numeric", month: "long", day: "numeric",
+            }) + " 회의";
+            await MeetingAPI.create({
+              title,
+              project_id: currentProject?.id,
+              duration_seconds: seconds,
+              participants: PARTICIPANTS.map(p => ({ name: p.name, speak_time_seconds: 0 })),
+            }).catch(() => {});
             router.back();
           },
         },

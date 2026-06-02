@@ -1,10 +1,10 @@
 /**
  * app/(screens)/meeting/index.tsx
- * 
+ *
  * 회의 화면 — 새 회의 시작 + 지난 회의 목록
  */
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -15,30 +15,35 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import OptionSheet, { MEETING_OPTIONS } from "@/components/modals/OptionSheet";
 import Icon from "@/components/common/Icon";
+import { MeetingAPI, MeetingDTO } from "@/services/api";
 
-// 회의 기록 아이템
+function formatDuration(seconds: number): string {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `${h}시간 ${m > 0 ? m + "분" : ""}`.trim();
+  if (m > 0) return `${m}분`;
+  return `${seconds}초`;
+}
+
+function formatDate(isoString: string): string {
+  const d = new Date(isoString);
+  return d.toLocaleDateString("ko-KR", { year: "numeric", month: "long", day: "numeric" });
+}
+
 interface MeetingHistoryItemProps {
-  index: number;
+  meeting: MeetingDTO;
   onOption: () => void;
 }
 
-function MeetingHistoryItem({ index, onOption }: MeetingHistoryItemProps) {
+function MeetingHistoryItem({ meeting, onOption }: MeetingHistoryItemProps) {
   const C = useTheme();
   const router = useRouter();
-  const MEETINGS = [
-    { title: "중간 발표 준비 회의", date: "2026년 3월 10일", duration: "1시간 30분", members: 4,
-      summary: ["AI 요약 내용", "AI 요약 내용", "AI 요약 내용"] },
-    { title: "백엔드 API 설계 논의", date: "2026년 3월 7일", duration: "45분", members: 3,
-      summary: ["API 설계 확정", "담당자 분배 완료", "다음 회의 일정 조율"] },
-    { title: "킥오프 미팅", date: "2026년 3월 3일", duration: "2시간 05분", members: 5,
-      summary: ["프로젝트 목표 설정", "역할 분담 완료", "일정 수립"] },
-  ];
-  const m = MEETINGS[index % MEETINGS.length];
 
   return (
     <TouchableOpacity
@@ -48,8 +53,10 @@ function MeetingHistoryItem({ index, onOption }: MeetingHistoryItemProps) {
       <View style={{ flex: 1, gap: 8 }}>
         <View style={{ flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between" }}>
           <View style={{ flex: 1 }}>
-            <Text style={[styles.historyTitle, { color: C.text }]}>{m.title}</Text>
-            <Text style={[styles.historyDate, { color: C.primary }]}>{m.date}  {m.duration}</Text>
+            <Text style={[styles.historyTitle, { color: C.text }]}>{meeting.title}</Text>
+            <Text style={[styles.historyDate, { color: C.primary }]}>
+              {formatDate(meeting.created_at)}  {formatDuration(meeting.duration_seconds)}
+            </Text>
           </View>
           <TouchableOpacity onPress={onOption} activeOpacity={0.7} style={styles.historyOption}>
             <Icon name="option" size={20} color={C.textMuted} />
@@ -58,11 +65,17 @@ function MeetingHistoryItem({ index, onOption }: MeetingHistoryItemProps) {
         <View style={[styles.summaryBox, { borderColor: C.primary + "40", backgroundColor: C.primary + "08" }]}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
             <Icon name="file" size={14} color={C.primary} />
-            <Text style={[styles.summaryTitle, { color: C.primary }]}>AI 요약</Text>
+            <Text style={[styles.summaryTitle, { color: C.primary }]}>
+              AI 요약 · 참여자 {meeting.participants.length}명
+            </Text>
           </View>
-          {m.summary.map((line, i) => (
-            <Text key={i} style={[styles.summaryLine, { color: C.textSub }]}>{line}</Text>
-          ))}
+          {meeting.summary.length > 0 ? (
+            meeting.summary.map((line, i) => (
+              <Text key={i} style={[styles.summaryLine, { color: C.textSub }]}>{line}</Text>
+            ))
+          ) : (
+            <Text style={[styles.summaryLine, { color: C.textMuted }]}>요약이 없습니다.</Text>
+          )}
           <TouchableOpacity
             style={styles.detailBtn}
             activeOpacity={0.7}
@@ -80,7 +93,23 @@ export default function MeetingScreen() {
   const C = useTheme();
   const router = useRouter();
   const { currentProject } = useProject();
+  const [meetings, setMeetings] = useState<MeetingDTO[]>([]);
   const [optionOpen, setOptionOpen] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+
+  useFocusEffect(
+    useCallback(() => {
+      MeetingAPI.list(currentProject?.id).then(setMeetings).catch(() => {});
+    }, [currentProject?.id])
+  );
+
+  const handleDelete = async () => {
+    if (!selectedId) return;
+    setMeetings(prev => prev.filter(m => m.id !== selectedId));
+    await MeetingAPI.delete(selectedId).catch(() => {});
+    setSelectedId(null);
+    setOptionOpen(false);
+  };
 
   return (
     <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
@@ -95,13 +124,7 @@ export default function MeetingScreen() {
             {currentProject?.name ?? "회의"}
           </Text>
         </View>
-        <TouchableOpacity
-          style={styles.iconBtn}
-          activeOpacity={0.7}
-          onPress={() => setOptionOpen(true)}
-        >
-          <Icon name="settings" size={22} color={C.textSub} />
-        </TouchableOpacity>
+        <View style={styles.iconBtn} />
       </View>
 
       <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
@@ -128,24 +151,28 @@ export default function MeetingScreen() {
         {/* ── 지난 회의 ── */}
         <Text style={[styles.sectionTitle, { color: C.text }]}>지난 회의</Text>
 
-        {[0, 1, 2].map((i) => (
-          <MeetingHistoryItem
-            key={i}
-            index={i}
-            onOption={() => setOptionOpen(true)}
-          />
-        ))}
+        {meetings.length === 0 ? (
+          <Text style={[styles.emptyText, { color: C.textMuted }]}>아직 회의가 없어요.</Text>
+        ) : (
+          meetings.map(m => (
+            <MeetingHistoryItem
+              key={m.id}
+              meeting={m}
+              onOption={() => { setSelectedId(m.id); setOptionOpen(true); }}
+            />
+          ))
+        )}
 
       </ScrollView>
 
       {/* 회의 옵션 바텀시트 */}
       <OptionSheet
         isOpen={optionOpen}
-        onClose={() => setOptionOpen(false)}
+        onClose={() => { setOptionOpen(false); setSelectedId(null); }}
         title="회의 옵션"
         options={MEETING_OPTIONS(
           () => Alert.alert("회의록", "회의록을 엽니다."),
-          () => Alert.alert("삭제", "회의가 삭제되었습니다.")
+          handleDelete,
         )}
       />
     </SafeAreaView>
@@ -166,7 +193,6 @@ const styles = StyleSheet.create({
   headerTitle: { fontSize: 15, fontWeight: "600", flex: 1 },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
 
-  // 회의 이력 카드
   historyDate: { fontSize: 12, marginTop: 2 },
   summaryBox: {
     borderRadius: 10,
@@ -181,7 +207,6 @@ const styles = StyleSheet.create({
 
   body: { padding: 16, gap: 16, paddingBottom: 40 },
 
-  // 새 회의 카드
   newMeetingCard: {
     borderRadius: 16,
     padding: 28,
@@ -197,11 +222,7 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     marginBottom: 4,
   },
-  newMeetingTitle: {
-    color: "#FFFFFF",
-    fontSize: 20,
-    fontWeight: "700",
-  },
+  newMeetingTitle: { color: "#FFFFFF", fontSize: 20, fontWeight: "700" },
   newMeetingDesc: {
     color: "rgba(255,255,255,0.85)",
     fontSize: 13,
@@ -209,7 +230,6 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 
-  // 지난 회의
   sectionTitle: { fontSize: 16, fontWeight: "600" },
   historyItem: {
     borderRadius: 14,
@@ -218,4 +238,5 @@ const styles = StyleSheet.create({
   },
   historyTitle: { fontSize: 15, fontWeight: "600", marginBottom: 2 },
   historyOption: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },
+  emptyText: { textAlign: "center", fontSize: 14, paddingVertical: 24 },
 });

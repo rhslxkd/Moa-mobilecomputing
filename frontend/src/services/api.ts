@@ -175,6 +175,92 @@ export const AuthAPI = {
     ),
 };
 
+// ── Todo API ───────────────────────────────────────────────
+export interface TodoDTO {
+  id: string;
+  title: string;
+  description: string | null;
+  project_id: string | null;
+  project_name: string | null;
+  assignee_member_id: string | null;
+  done: boolean;
+  due_date: string | null;   // "YYYY-MM-DD"
+  start_date: string | null;
+}
+
+export const TodoAPI = {
+  list: () =>
+    request<TodoDTO[]>("/todos", { method: "GET" }),
+
+  listByProject: (projectId: string) =>
+    request<TodoDTO[]>(`/todos/project/${projectId}`, { method: "GET" }),
+
+  create: (body: {
+    title: string;
+    description?: string;
+    project_id?: string;
+    assignee_member_id?: string;
+    due_date?: string;
+    start_date?: string;
+  }) =>
+    request<TodoDTO>("/todos", { method: "POST", body: JSON.stringify(body) }),
+
+  update: (id: string, body: {
+    title?: string;
+    description?: string;
+    done?: boolean;
+    due_date?: string;
+  }) =>
+    request<TodoDTO>(`/todos/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
+
+  toggleDone: (id: string) =>
+    request<TodoDTO>(`/todos/${id}/done`, { method: "PATCH" }),
+
+  delete: (id: string) =>
+    request<void>(`/todos/${id}`, { method: "DELETE" }),
+};
+
+// ── Meeting API ────────────────────────────────────────────
+export interface MeetingParticipantDTO {
+  id: string;
+  name: string;
+  speak_time_seconds: number;
+}
+
+export interface MeetingDTO {
+  id: string;
+  title: string;
+  project_id: string | null;
+  project_name: string | null;
+  duration_seconds: number;
+  summary: string[];
+  participants: MeetingParticipantDTO[];
+  created_at: string;
+}
+
+export const MeetingAPI = {
+  list: (projectId?: string) =>
+    request<MeetingDTO[]>(
+      `/meetings${projectId ? `?project_id=${projectId}` : ""}`,
+      { method: "GET" },
+    ),
+
+  create: (body: {
+    title: string;
+    project_id?: string;
+    duration_seconds: number;
+    summary?: string[];
+    participants?: { name: string; speak_time_seconds: number }[];
+  }) =>
+    request<MeetingDTO>("/meetings", { method: "POST", body: JSON.stringify(body) }),
+
+  get: (id: string) =>
+    request<MeetingDTO>(`/meetings/${id}`, { method: "GET" }),
+
+  delete: (id: string) =>
+    request<void>(`/meetings/${id}`, { method: "DELETE" }),
+};
+
 // ── Projects API ───────────────────────────────────────────
 export interface MemberDTO {
   id: string;
