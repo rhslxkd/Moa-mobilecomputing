@@ -2,7 +2,7 @@
  * app/(screens)/friends/index.tsx — 친구 관리
  */
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -11,33 +11,30 @@ import {
   StyleSheet,
   TextInput,
   Modal,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Svg, { Path, Circle } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
+import { useAuth } from "@/contexts/AuthContext";
 import Icon from "@/components/common/Icon";
+import QRCode from "react-native-qrcode-svg";
+import { FriendsAPI, UserSearchDTO, FriendRequestDTO, MemberAPI } from "@/services/api";
 
-// ── 타입 & 목 데이터 ──────────────────────────────────────────────
+// ── 타입 ──────────────────────────────────────────────────────────
 interface Friend {
-  id: string;
+  id: string;        // friendship_id
+  userId: string;
   name: string;
   username: string;
   avatarColor: string;
 }
 
-const INITIAL_FRIENDS: Friend[] = [
-  { id: "f1", name: "김혜민", username: "hyemin_k",  avatarColor: "#00A9EC" },
-  { id: "f2", name: "손병관", username: "bgkwan",     avatarColor: "#7C3AED" },
-  { id: "f3", name: "송은상", username: "eungsang",   avatarColor: "#16A34A" },
-  { id: "f4", name: "장현수", username: "jhs_dev",    avatarColor: "#F59E0B" },
-];
-
-const SEARCH_DB: Record<string, { name: string; username: string; projects: number; org: string }> = {
-  ccome3:  { name: "박지민", username: "ccome3",  projects: 3, org: "중앙대학교 · 예술공학부 · 20271234" },
-  dev001:  { name: "홍길동", username: "dev001",  projects: 1, org: "서울대학교 · 컴퓨터공학부 · 20201234" },
-};
+const AVATAR_COLORS = ["#00A9EC", "#7C3AED", "#16A34A", "#F59E0B", "#DC2626", "#0891B2"];
+const colorFor = (s: string) =>
+  AVATAR_COLORS[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % AVATAR_COLORS.length];
 
 type Mode = "normal" | "invite" | "delete";
 
@@ -65,12 +62,30 @@ export default function FriendsScreen() {
   const C = useTheme();
   const router = useRouter();
   const { projects } = useProject();
+  const { user } = useAuth();
+  const [showQRModal, setShowQRModal] = useState(false);
 
-  const [friends, setFriends] = useState<Friend[]>(INITIAL_FRIENDS);
+  const [friends, setFriends] = useState<Friend[]>([]);
+  const [requests, setRequests] = useState<FriendRequestDTO[]>([]);
   const [search, setSearch] = useState("");
   const [mode, setMode] = useState<Mode>("normal");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showMenu, setShowMenu] = useState(false);
+
+  const loadFriends = useCallback(() => {
+    FriendsAPI.list()
+      .then((ds) => setFriends(ds.map((d) => ({
+        id: d.friendship_id,
+        userId: d.user_id,
+        name: d.name,
+        username: d.username,
+        avatarColor: colorFor(d.username),
+      }))))
+      .catch(() => {});
+    FriendsAPI.requests().then(setRequests).catch(() => {});
+  }, []);
+
+  useFocusEffect(loadFriends);
 
   // 초대 모달
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -82,7 +97,7 @@ export default function FriendsScreen() {
   // 친구 추가 모달
   const [showAddModal, setShowAddModal] = useState(false);
   const [addInput, setAddInput] = useState("");
-  const [foundUser, setFoundUser] = useState<typeof SEARCH_DB[string] | null>(null);
+  const [foundUser, setFoundUser] = useState<UserSearchDTO | null>(null);
   const [searchError, setSearchError] = useState(false);
 
   const filtered = useMemo(
@@ -114,13 +129,35 @@ export default function FriendsScreen() {
     setSelectedIds([]);
   };
 
-  const handleDeleteConfirm = () => {
+  const handleDeleteConfirm = async () => {
+    await Promise.all(selectedIds.map((id) => FriendsAPI.remove(id).catch(() => {})));
     setFriends(prev => prev.filter(f => !selectedIds.includes(f.id)));
     setShowDeleteModal(false);
     resetMode();
   };
 
-  const handleInviteConfirm = () => {
+  const handleAccept = async (friendshipId: string) => {
+    await FriendsAPI.accept(friendshipId).catch(() => {});
+    setRequests(prev => prev.filter(r => r.friendship_id !== friendshipId));
+    loadFriends();
+  };
+
+  const handleReject = async (friendshipId: string) => {
+    await FriendsAPI.remove(friendshipId).catch(() => {});
+    setRequests(prev => prev.filter(r => r.friendship_id !== friendshipId));
+  };
+
+  const handleInviteConfirm = async () => {
+    if (!selectedProjectId) { Alert.alert("프로젝트 선택", "초대할 프로젝트를 선택해주세요."); return; }
+    const targets = friends.filter(f => selectedIds.includes(f.id));
+    try {
+      await Promise.all(targets.map(f =>
+        MemberAPI.add(selectedProjectId, { name: f.name, roles: ["팀원"], user_id: f.userId })
+      ));
+      Alert.alert("초대 완료", `${targets.length}명에게 프로젝트 초대를 보냈어요.`);
+    } catch (e: any) {
+      Alert.alert("초대 실패", e?.message ?? "초대에 실패했어요.");
+    }
     setShowInviteModal(false);
     resetMode();
     setSelectedProjectId(null);
@@ -131,21 +168,27 @@ export default function FriendsScreen() {
     setShowDeleteModal(true);
   };
 
-  const handleAddSearch = () => {
-    const found = SEARCH_DB[addInput.trim()];
-    if (found) { setFoundUser(found); setSearchError(false); }
-    else { setFoundUser(null); setSearchError(!!addInput.trim()); }
+  const handleAddSearch = async () => {
+    const q = addInput.trim();
+    if (!q) return;
+    try {
+      const u = await FriendsAPI.search(q);
+      setFoundUser(u);
+      setSearchError(false);
+    } catch {
+      setFoundUser(null);
+      setSearchError(true);
+    }
   };
 
-  const handleAddFriend = () => {
+  const handleAddFriend = async () => {
     if (!foundUser) return;
-    const newFriend: Friend = {
-      id: `f${Date.now()}`,
-      name: foundUser.name,
-      username: foundUser.username,
-      avatarColor: "#00A9EC",
-    };
-    setFriends(prev => [...prev, newFriend]);
+    try {
+      await FriendsAPI.request(foundUser.username);
+      Alert.alert("요청 완료", `${foundUser.name}님에게 친구 요청을 보냈어요.`);
+    } catch (e: any) {
+      Alert.alert("요청 실패", e?.message ?? "친구 요청에 실패했어요.");
+    }
     setShowAddModal(false);
     setAddInput("");
     setFoundUser(null);
@@ -175,6 +218,12 @@ export default function FriendsScreen() {
             </TouchableOpacity>
           ) : (
             <>
+              <TouchableOpacity
+                onPress={() => setShowQRModal(true)}
+                style={s.iconBtn} activeOpacity={0.7}
+              >
+                <Text style={{ color: C.textSub, fontSize: 12, fontWeight: "800" }}>QR</Text>
+              </TouchableOpacity>
               <TouchableOpacity
                 onPress={() => setShowMenu(v => !v)}
                 style={s.iconBtn} activeOpacity={0.7}
@@ -231,6 +280,40 @@ export default function FriendsScreen() {
 
       {/* ── 친구 목록 ── */}
       <ScrollView style={{ flex: 1 }}>
+        {/* 받은 친구 요청 */}
+        {mode === "normal" && requests.length > 0 && (
+          <View style={[s.requestSection, { borderBottomColor: C.border }]}>
+            <Text style={[s.requestSectionTitle, { color: C.textMuted }]}>
+              받은 친구 요청 {requests.length}
+            </Text>
+            {requests.map((r) => (
+              <View key={r.friendship_id} style={s.requestRow}>
+                <View style={[s.friendAvatar, { backgroundColor: colorFor(r.username) }]}>
+                  <Text style={s.friendAvatarText}>{r.name.charAt(0)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={[s.friendName, { color: C.text }]}>{r.name}</Text>
+                  <Text style={[s.foundUsername, { color: C.textMuted }]}>@{r.username}</Text>
+                </View>
+                <TouchableOpacity
+                  onPress={() => handleAccept(r.friendship_id)}
+                  style={[s.reqAcceptBtn, { backgroundColor: C.primary }]}
+                  activeOpacity={0.85}
+                >
+                  <Text style={s.reqAcceptText}>수락</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => handleReject(r.friendship_id)}
+                  style={[s.reqRejectBtn, { borderColor: C.border }]}
+                  activeOpacity={0.7}
+                >
+                  <Text style={[s.reqRejectText, { color: C.textMuted }]}>거절</Text>
+                </TouchableOpacity>
+              </View>
+            ))}
+          </View>
+        )}
+
         {filtered.map(friend => {
           const selected = selectedIds.includes(friend.id);
           return (
@@ -424,10 +507,6 @@ export default function FriendsScreen() {
                     <Text style={[s.foundName, { color: C.text }]}>{foundUser.name}</Text>
                     <Text style={[s.foundUsername, { color: C.textMuted }]}>@{foundUser.username}</Text>
                   </View>
-                  <View style={[s.foundBadge, { backgroundColor: C.primary + "20" }]}>
-                    <Text style={[s.foundBadgeText, { color: C.primary }]}>{foundUser.projects}개 프로젝트 참여중</Text>
-                  </View>
-                  <Text style={[s.foundOrg, { color: C.textMuted }]}>{foundUser.org}</Text>
                 </View>
               </View>
             )}
@@ -445,11 +524,42 @@ export default function FriendsScreen() {
                 style={[s.modalBtnConfirm, { backgroundColor: C.primary }]}
                 activeOpacity={0.85}
               >
-                <Text style={s.modalBtnConfirmText}>{foundUser ? "추가하기" : "검색"}</Text>
+                <Text style={s.modalBtnConfirmText}>{foundUser ? "요청 보내기" : "검색"}</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* ── 내 QR 모달 ── */}
+      <Modal visible={showQRModal} transparent animationType="fade" onRequestClose={() => setShowQRModal(false)}>
+        <TouchableOpacity
+          style={s.qrModalBackdrop}
+          activeOpacity={1}
+          onPress={() => setShowQRModal(false)}
+        >
+          <TouchableOpacity activeOpacity={1} style={[s.qrModalCard, { backgroundColor: C.bgCard }]}>
+            <Text style={[s.qrModalTitle, { color: C.text }]}>내 QR 코드</Text>
+            <Text style={[s.qrModalSub, { color: C.textMuted }]}>
+              친구가 이 코드를 스캔하면 친구 요청이 와요
+            </Text>
+            <View style={s.qrBox}>
+              {user?.username ? (
+                <QRCode value={user.username} size={200} />
+              ) : (
+                <Text style={{ color: C.textMuted }}>로그인이 필요해요</Text>
+              )}
+            </View>
+            <Text style={[s.qrModalUsername, { color: C.text }]}>@{user?.username ?? ""}</Text>
+            <TouchableOpacity
+              onPress={() => setShowQRModal(false)}
+              style={[s.qrModalClose, { backgroundColor: C.primary }]}
+              activeOpacity={0.85}
+            >
+              <Text style={s.qrModalCloseText}>닫기</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
       </Modal>
 
     </SafeAreaView>
@@ -666,4 +776,23 @@ const s = StyleSheet.create({
   },
   foundBadgeText: { fontSize: 11, fontWeight: "600" },
   foundOrg: { fontSize: 12 },
+
+  // 받은 친구 요청
+  requestSection: { paddingVertical: 8, borderBottomWidth: 6, borderBottomColor: "#F1F5F9" },
+  requestSectionTitle: { fontSize: 12, fontWeight: "600", paddingHorizontal: 20, paddingVertical: 8 },
+  requestRow: { flexDirection: "row", alignItems: "center", gap: 12, paddingHorizontal: 20, paddingVertical: 8 },
+  reqAcceptBtn: { paddingHorizontal: 14, paddingVertical: 7, borderRadius: 8 },
+  reqAcceptText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  reqRejectBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
+  reqRejectText: { fontSize: 13, fontWeight: "600" },
+
+  // 내 QR 모달
+  qrModalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 },
+  qrModalCard: { width: "100%", borderRadius: 20, padding: 24, alignItems: "center", gap: 12 },
+  qrModalTitle: { fontSize: 18, fontWeight: "700" },
+  qrModalSub: { fontSize: 13, textAlign: "center" },
+  qrBox: { padding: 16, backgroundColor: "#fff", borderRadius: 16, marginVertical: 8 },
+  qrModalUsername: { fontSize: 16, fontWeight: "700" },
+  qrModalClose: { borderRadius: 12, paddingVertical: 13, paddingHorizontal: 40, marginTop: 4 },
+  qrModalCloseText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

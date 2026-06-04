@@ -1,8 +1,6 @@
-import resend
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
 
-from app.core.config import settings
 from app.core.supabase import supabase, supabase_admin
 from app.schemas.auth import (
     SignUpRequest,
@@ -18,8 +16,6 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services import otp_store
-
-resend.api_key = settings.resend_api_key
 
 
 # ── 내부 헬퍼 ─────────────────────────────────────────────
@@ -191,43 +187,37 @@ def setup_affiliation(req: SetupAffiliationRequest, token: str) -> None:
 # ── 아이디 찾기 ────────────────────────────────────────────
 
 def find_id_send_otp(req: FindIdRequest) -> None:
-    """이메일로 OTP 발송. 가입된 이메일이 아니면 404."""
+    """Supabase OTP 발송. 가입된 이메일이 아니면 404."""
     users = supabase_admin.auth.admin.list_users()
-    email_exists = any(u.email == req.email for u in users)
-    if not email_exists:
+    if not any(u.email == req.email for u in users):
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="가입되지 않은 이메일입니다.")
 
-    otp = otp_store.generate_otp(req.email)
-
     try:
-        resend.Emails.send({
-            "from": settings.resend_from_email,
-            "to": req.email,
-            "subject": "[MOA] 아이디 찾기 인증번호",
-            "html": (
-                f"<p>안녕하세요, MOA입니다.</p>"
-                f"<p>아이디 찾기 인증번호: <strong>{otp}</strong></p>"
-                f"<p>인증번호는 10분간 유효합니다.</p>"
-            ),
+        supabase.auth.sign_in_with_otp({
+            "email": req.email,
+            "options": {"should_create_user": False},
         })
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"이메일 발송에 실패했습니다: {e}")
 
 
 def find_id_verify_otp(req: FindIdVerifyRequest) -> str:
-    """OTP 검증 후 username 반환."""
-    if not otp_store.verify_otp(req.email, req.token):
+    """Supabase OTP 검증 후 username 반환."""
+    try:
+        response = supabase.auth.verify_otp(
+            {"email": req.email, "token": req.token, "type": "email"}
+        )
+    except AuthApiError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않거나 만료되었습니다.")
 
-    users = supabase_admin.auth.admin.list_users()
-    matched = next((u for u in users if u.email == req.email), None)
-    if not matched:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
+    user = response.user
+    if not user:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증에 실패했습니다.")
 
     result = (
         supabase_admin.table("profiles")
         .select("username")
-        .eq("id", matched.id)
+        .eq("id", user.id)
         .limit(1)
         .execute()
     )
@@ -239,7 +229,7 @@ def find_id_verify_otp(req: FindIdVerifyRequest) -> str:
 # ── 비밀번호 찾기 ──────────────────────────────────────────
 
 def find_password_send_otp(req: FindPasswordRequest) -> None:
-    """이메일 + username 일치 확인 후 6자리 OTP를 Resend로 발송."""
+    """이메일 + username 일치 확인 후 Supabase OTP 발송."""
     result = (
         supabase_admin.table("profiles")
         .select("id")
@@ -256,36 +246,30 @@ def find_password_send_otp(req: FindPasswordRequest) -> None:
     if not auth_user.user or auth_user.user.email != req.email:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="아이디 또는 이메일이 올바르지 않습니다.")
 
-    otp = otp_store.generate_otp(req.email)
-
     try:
-        resend.Emails.send({
-            "from": settings.resend_from_email,
-            "to": req.email,
-            "subject": "[MOA] 비밀번호 재설정 인증번호",
-            "html": (
-                f"<p>안녕하세요, MOA입니다.</p>"
-                f"<p>비밀번호 재설정 인증번호: <strong>{otp}</strong></p>"
-                f"<p>인증번호는 10분간 유효합니다.</p>"
-            ),
+        supabase.auth.sign_in_with_otp({
+            "email": req.email,
+            "options": {"should_create_user": False},
         })
     except Exception as e:
         raise HTTPException(status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"이메일 발송에 실패했습니다: {e}")
 
 
 def find_password_verify_otp(req: FindPasswordVerifyRequest) -> TokenResponse:
-    """6자리 OTP 검증 후 비밀번호 재설정용 토큰 반환."""
-    if not otp_store.verify_otp(req.email, req.token):
+    """Supabase OTP 검증 후 비밀번호 재설정용 access_token 반환."""
+    try:
+        response = supabase.auth.verify_otp(
+            {"email": req.email, "token": req.token, "type": "email"}
+        )
+    except AuthApiError:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증번호가 올바르지 않거나 만료되었습니다.")
 
-    # 이메일로 user_id 조회
-    users = supabase_admin.auth.admin.list_users()
-    user = next((u for u in users if u.email == req.email), None)
-    if not user:
-        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="사용자를 찾을 수 없습니다.")
+    session = response.session
+    if not session:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="인증에 실패했습니다.")
 
-    reset_token = otp_store.create_reset_token(user.id)
-    return TokenResponse(access_token=reset_token, refresh_token="")
+    # Supabase access_token을 비밀번호 재설정 토큰으로 사용
+    return TokenResponse(access_token=session.access_token, refresh_token=session.refresh_token)
 
 
 # ── 내 프로필 조회 ────────────────────────────────────────
@@ -329,14 +313,75 @@ def get_me(token: str):
 # ── 비밀번호 재설정 ────────────────────────────────────────
 
 def reset_password(req: ResetPasswordRequest, token: str) -> None:
-    """find-password/verify 에서 받은 리셋 토큰으로 비밀번호 변경."""
-    user_id = otp_store.consume_reset_token(token)
-    if not user_id:
-        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="유효하지 않거나 만료된 토큰입니다.")
-
+    """find-password/verify 에서 받은 Supabase access_token으로 비밀번호 변경."""
+    user = _get_user_from_token(token)
     try:
         supabase_admin.auth.admin.update_user_by_id(
-            user_id, {"password": req.new_password}
+            user.id, {"password": req.new_password}
         )
     except AuthApiError as e:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ── 프로필 수정 ────────────────────────────────────────────
+
+def update_profile(req, token: str) -> None:
+    """이름 + 소속 정보 수정. (name은 last_name에 통째로 저장, first_name="")"""
+    user = _get_user_from_token(token)
+
+    supabase_admin.table("profiles").update(
+        {"last_name": req.name.strip(), "first_name": ""}
+    ).eq("id", user.id).execute()
+
+    # 소속 정보 upsert (있으면 update, 없으면 insert)
+    existing = (
+        supabase_admin.table("user_affiliations").select("id").eq("user_id", user.id).limit(1).execute()
+    ).data
+    aff_data = {
+        "organization_name": req.organization_name,
+        "department": req.department,
+        "student_id": req.student_id,
+    }
+    if existing:
+        supabase_admin.table("user_affiliations").update(aff_data).eq("user_id", user.id).execute()
+    else:
+        supabase_admin.table("user_affiliations").insert({"user_id": user.id, **aff_data}).execute()
+
+
+# ── 비밀번호 변경 ──────────────────────────────────────────
+
+def change_password(req, token: str) -> None:
+    """현재 비밀번호 검증 후 변경."""
+    user = _get_user_from_token(token)
+    email = user.email
+
+    # 현재 비밀번호 검증
+    try:
+        supabase.auth.sign_in_with_password({"email": email, "password": req.current_password})
+    except AuthApiError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="현재 비밀번호가 올바르지 않습니다.")
+
+    try:
+        supabase_admin.auth.admin.update_user_by_id(user.id, {"password": req.new_password})
+    except AuthApiError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+# ── 아이디 변경 ────────────────────────────────────────────
+
+def change_username(req, token: str) -> None:
+    """비밀번호 검증 후 username 변경 (중복 체크)."""
+    user = _get_user_from_token(token)
+
+    # 비밀번호 검증
+    try:
+        supabase.auth.sign_in_with_password({"email": user.email, "password": req.password})
+    except AuthApiError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="비밀번호가 올바르지 않습니다.")
+
+    # 중복 체크
+    _check_username_available(req.new_username)
+
+    supabase_admin.table("profiles").update(
+        {"username": req.new_username}
+    ).eq("id", user.id).execute()

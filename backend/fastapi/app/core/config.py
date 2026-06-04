@@ -9,6 +9,8 @@ class Settings(BaseSettings):
     resend_api_key: str
     resend_from_email: str = "MOA <noreply@moa.com>"
 
+    openai_api_key: str
+
     class Config:
         env_file = ".env"
 

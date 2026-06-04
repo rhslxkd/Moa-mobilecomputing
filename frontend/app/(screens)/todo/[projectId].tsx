@@ -3,7 +3,7 @@
  * 프로젝트 팀 투두 — 팀원별로 묶어 표시 + 캘린더 필터
  */
 
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import {
   View,
   Text,
@@ -16,7 +16,7 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path, Polyline } from "react-native-svg";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import { TodoAPI } from "@/services/api";
@@ -312,23 +312,25 @@ export default function ProjectTodosScreen() {
   const [todoMap, setTodoMap] = useState<Record<string, TodoItem[]>>({});
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  useEffect(() => {
-    if (!projectId) return;
-    TodoAPI.listByProject(projectId).then(dtos => {
-      const map: Record<string, TodoItem[]> = {};
-      dtos.forEach(d => {
-        const key = d.assignee_member_id ?? "__unassigned__";
-        if (!map[key]) map[key] = [];
-        map[key].push({
-          id: d.id,
-          title: d.title,
-          done: d.done,
-          dueDate: d.due_date ? new Date(d.due_date) : new Date(),
+  useFocusEffect(
+    useCallback(() => {
+      if (!projectId) return;
+      TodoAPI.listByProject(projectId).then(dtos => {
+        const map: Record<string, TodoItem[]> = {};
+        dtos.forEach(d => {
+          const key = d.assignee_member_id ?? "__unassigned__";
+          if (!map[key]) map[key] = [];
+          map[key].push({
+            id: d.id,
+            title: d.title,
+            done: d.done,
+            dueDate: d.due_date ? new Date(d.due_date) : new Date(),
+          });
         });
-      });
-      setTodoMap(map);
-    }).catch(() => {});
-  }, [projectId]);
+        setTodoMap(map);
+      }).catch(() => {});
+    }, [projectId])
+  );
 
   const toggleTodo = async (memberId: string, todoId: string) => {
     setTodoMap(prev => ({

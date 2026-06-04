@@ -1,0 +1,126 @@
+from datetime import date, datetime, timezone
+
+from fastapi import HTTPException, status
+from supabase_auth.errors import AuthApiError
+
+from app.core.supabase import supabase_admin
+from app.schemas.notification import NotificationResponse
+
+
+def _get_user(token: str):
+    try:
+        resp = supabase_admin.auth.get_user(token)
+    except AuthApiError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰입니다.")
+    if not resp.user:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="유효하지 않은 토큰입니다.")
+    return resp.user
+
+
+def _relative_time(iso: str) -> str:
+    try:
+        dt = datetime.fromisoformat(iso)
+    except ValueError:
+        return ""
+    now = datetime.now(timezone.utc)
+    secs = (now - dt).total_seconds()
+    if secs < 60:
+        return "방금 전"
+    if secs < 3600:
+        return f"{int(secs // 60)}분 전"
+    if secs < 86400:
+        return f"{int(secs // 3600)}시간 전"
+    days = int(secs // 86400)
+    if days == 1:
+        return "어제"
+    return f"{days}일 전"
+
+
+def list_notifications(token: str) -> list[NotificationResponse]:
+    """todo 마감 임박 + 최근 회의를 알림으로 동적 합성."""
+    user = _get_user(token)
+
+    projects = (
+        supabase_admin.table("projects")
+        .select("id, name")
+        .eq("owner_id", user.id)
+        .execute()
+    ).data
+    proj_map = {p["id"]: p["name"] for p in projects}
+
+    today = date.today()
+
+    # 1) 마감 임박/지난 미완료 todo (지난 것 → 오늘 → 내일 순)
+    todo_notifs: list[tuple[int, NotificationResponse]] = []
+    todos = (
+        supabase_admin.table("todos")
+        .select("*")
+        .eq("owner_id", user.id)
+        .eq("done", False)
+        .execute()
+    ).data
+    for t in todos:
+        if not t.get("due_date"):
+            continue
+        try:
+            due = date.fromisoformat(t["due_date"])
+        except ValueError:
+            continue
+        diff = (due - today).days
+        if diff > 1:
+            continue
+        proj = proj_map.get(t.get("project_id"), "개인")
+        if diff < 0:
+            body, time_label = f"'{t['title']}' 마감이 지났어요.", f"D+{abs(diff)}"
+        elif diff == 0:
+            body, time_label = f"'{t['title']}'이(가) 오늘 마감입니다.", "오늘 마감"
+        else:
+            body, time_label = f"'{t['title']}'이(가) 내일 마감입니다.", "내일 마감"
+        todo_notifs.append((diff, NotificationResponse(
+            id=f"todo-{t['id']}", type="todo", title="할일 마감 임박",
+            body=body, project=proj, time=time_label, read=False,
+        )))
+    todo_notifs.sort(key=lambda x: x[0])  # 지난 것(음수) 먼저
+
+    # 2) 최근 회의 (최신순, 회의록 생성 알림)
+    meeting_notifs: list[NotificationResponse] = []
+    meetings = (
+        supabase_admin.table("meetings")
+        .select("*")
+        .eq("owner_id", user.id)
+        .order("created_at", desc=True)
+        .limit(5)
+        .execute()
+    ).data
+    for m in meetings:
+        proj = proj_map.get(m.get("project_id"), "회의")
+        meeting_notifs.append(NotificationResponse(
+            id=f"meeting-{m['id']}", type="meeting", title="회의록이 생성됐어요",
+            body=f"'{m['title']}' 회의록이 정리됐습니다.",
+            project=proj, time=_relative_time(m["created_at"]), read=False,
+        ))
+
+    # 3) 프로젝트 초대 알림 (pending 상태인 초대만)
+    invite_notifs: list[NotificationResponse] = []
+    pending_invites = (
+        supabase_admin.table("project_members")
+        .select("id, project_id, created_at")
+        .eq("user_id", user.id)
+        .eq("status", "pending")
+        .order("created_at", desc=True)
+        .execute()
+    ).data
+    for inv in pending_invites:
+        p_rows = supabase_admin.table("projects").select("name").eq("id", inv["project_id"]).limit(1).execute().data
+        proj_name = p_rows[0]["name"] if p_rows else "프로젝트"
+        invite_notifs.append(NotificationResponse(
+            id=f"invite-{inv['id']}",
+            type="report",
+            title="프로젝트 초대가 왔어요",
+            body=f"'{proj_name}' 프로젝트에 초대됐습니다. 수락하면 팀원이 돼요.",
+            project=proj_name,
+            time=_relative_time(inv["created_at"]),
+            read=False,
+        ))
+
+    return invite_notifs + [n for _, n in todo_notifs] + meeting_notifs

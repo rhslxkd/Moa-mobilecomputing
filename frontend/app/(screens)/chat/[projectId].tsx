@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,19 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/contexts/AuthContext";
 import Icon from "@/components/common/Icon";
 import ChatBox from "@/components/chat/ChatBox";
+import { ChatAPI, MessageDTO } from "@/services/api";
+import { supabase } from "@/lib/supabase";
+import * as ImagePicker from "expo-image-picker";
+import * as DocumentPicker from "expo-document-picker";
+import * as WebBrowser from "expo-web-browser";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -24,37 +31,18 @@ interface Message {
   variant: "mine" | "theirs";
   message: string;
   time: string;
+  createdAt?: string;   // ISO string (읽음 판단용)
   senderName?: string;
   senderInitial?: string;
   readCount?: number;
+  attachmentType?: "image" | "file" | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
 }
 
-// ── Mock 데이터 ───────────────────────────
-const MOCK_MESSAGES: Message[] = [
-  {
-    id: "m1",
-    variant: "mine",
-    message: "채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용",
-    time: "오후 3:06",
-    readCount: 1,
-  },
-  {
-    id: "m2",
-    variant: "theirs",
-    message: "채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용채팅내용",
-    time: "오후 3:06",
-    readCount: 1,
-    senderName: "손범관",
-    senderInitial: "범관",
-  },
-];
-
-const ROOM_NAMES: Record<string, string> = {
-  t1: "AI 챗봇 개발 프로젝트",
-  t2: "모바일 앱 디자인",
-  t3: "데이터 분석 프로젝트",
-  p1: "이지은",
-};
+function fmtTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
+}
 
 const PINNED_ITEMS = [
   { type: "공지", icon: "📣", title: "공지 제목", desc: "공지내용공지내용공지내용공지내용공지내용공지내용공지내용공지내용..." },
@@ -109,38 +97,147 @@ export default function ChatDetailScreen() {
   const C = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { projectId } = useLocalSearchParams<{ projectId: string }>();
+  const { user } = useAuth();
+  const params = useLocalSearchParams<{ projectId: string; name?: string }>();
+  const roomId = params.projectId;          // 실제 room id
+  const roomName = params.name ?? "채팅방";
 
-  const [messages, setMessages] = useState<Message[]>(MOCK_MESSAGES);
+  const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchText, setSearchText] = useState("");
   const listRef = useRef<FlatList>(null);
 
-  const roomName = ROOM_NAMES[projectId] ?? "채팅방";
-  const memberCount = projectId?.startsWith('t') ? 5 : 1;
+  const memberCount = 0;
+
+  const toMsg = useCallback((d: MessageDTO): Message => ({
+    id: d.id,
+    variant: d.sender_id === user?.id ? "mine" : "theirs",
+    message: d.content,
+    time: fmtTime(d.created_at),
+    createdAt: d.created_at,
+    senderName: d.sender_name,
+    senderInitial: d.sender_name?.charAt(0),
+    attachmentType: d.attachment_type,
+    attachmentUrl: d.attachment_url,
+    attachmentName: d.attachment_name,
+  }), [user?.id]);
+
+  // 상대방 last_read_at (내 메시지 읽음 여부 판단용)
+  const [othersLastRead, setOthersLastRead] = useState<string | null>(null);
+
+  const scrollEnd = () => setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+
+  const reload = useCallback(() => {
+    if (!roomId) return;
+    ChatAPI.messages(roomId)
+      .then(ds => { setMessages(ds.map(toMsg)); scrollEnd(); })
+      .catch(() => {});
+  }, [roomId, toMsg]);
+
+  const reloadReadStatus = useCallback(() => {
+    if (!roomId || !user?.id) return;
+    ChatAPI.getReadStatus(roomId).then(list => {
+      const others = list.filter(m => m.user_id !== user.id);
+      // 상대방들 중 가장 오래된 last_read_at (가장 덜 읽은 기준)
+      const earliest = others.reduce<string | null>((min, m) => {
+        if (!m.last_read_at) return null;
+        if (!min) return m.last_read_at;
+        return m.last_read_at < min ? m.last_read_at : min;
+      }, others[0]?.last_read_at ?? null);
+      setOthersLastRead(earliest ?? null);
+    }).catch(() => {});
+  }, [roomId, user?.id]);
+
+  // 콜백을 ref로 최신 유지 (채널은 roomId 바뀔 때만 재생성)
+  const reloadRef = useRef(reload);
+  reloadRef.current = reload;
+  const reloadReadRef = useRef(reloadReadStatus);
+  reloadReadRef.current = reloadReadStatus;
+
+  // 초기 로드 + Realtime 구독 (roomId 단위로 1번만 구독)
+  useEffect(() => {
+    if (!roomId) return;
+    reloadRef.current();
+    reloadReadRef.current();
+    ChatAPI.markAsRead(roomId).catch(() => {});
+
+    const msgChannel = supabase
+      .channel(`room:${roomId}`)
+      .on("postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` },
+        () => reloadRef.current(),
+      )
+      // 상대방 읽음 상태 실시간 감지
+      .on("postgres_changes",
+        { event: "UPDATE", schema: "public", table: "chat_room_members", filter: `room_id=eq.${roomId}` },
+        () => reloadReadRef.current(),
+      )
+      .subscribe();
+
+    return () => { supabase.removeChannel(msgChannel); };
+  }, [roomId]);
+
+  // 내가 보낸 메시지가 읽혔는지 여부
+  const isRead = (msgCreatedAt: string) => {
+    if (!othersLastRead) return false;
+    return othersLastRead >= msgCreatedAt;
+  };
 
   const filteredMessages = isSearchMode && searchText.trim() !== ""
     ? messages.filter(m => m.message.toLowerCase().includes(searchText.toLowerCase()))
     : messages;
 
-  const sendMessage = () => {
-    if (!inputText.trim()) return;
-    const now = new Date();
-    const time = now.toLocaleTimeString('ko-KR', { hour: 'numeric', minute: '2-digit', hour12: true });
-    
-    const newMsg: Message = {
-      id: String(Date.now()),
-      variant: "mine",
-      message: inputText,
-      time,
-      readCount: 1,
-    };
-    
-    setMessages(prev => [...prev, newMsg]);
+  const sendMessage = async () => {
+    if (!inputText.trim() || !roomId) return;
+    const text = inputText.trim();
     setInputText("");
-    setTimeout(() => listRef.current?.scrollToEnd({ animated: true }), 100);
+    await ChatAPI.send(roomId, text).catch(() => {});
+    reload();
+  };
+
+  const sendFile = async (uri: string, name: string, mime: string) => {
+    if (!roomId) return;
+    setShowPlusMenu(false);
+    try {
+      await ChatAPI.sendFile(roomId, uri, name, mime);
+      reload();
+    } catch (e: any) {
+      Alert.alert("전송 실패", e?.message ?? "파일 전송에 실패했어요.");
+    }
+  };
+
+  const pickCamera = async () => {
+    setShowPlusMenu(false);
+    try {
+      const perm = await ImagePicker.requestCameraPermissionsAsync();
+      if (!perm.granted) { Alert.alert("권한 필요", "카메라 권한이 필요해요."); return; }
+      const res = await ImagePicker.launchCameraAsync({ quality: 0.7 });
+      if (res.canceled || !res.assets?.[0]) return;
+      const a = res.assets[0];
+      sendFile(a.uri, a.fileName ?? `photo_${Date.now()}.jpg`, a.mimeType ?? "image/jpeg");
+    } catch (e: any) {
+      Alert.alert("카메라 사용 불가", "시뮬레이터에는 카메라가 없어요. 실제 기기에서 사용하거나 '사진'을 이용해주세요.");
+    }
+  };
+
+  const pickPhoto = async () => {
+    const res = await ImagePicker.launchImageLibraryAsync({ quality: 0.7 });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
+    sendFile(a.uri, a.fileName ?? `photo_${Date.now()}.jpg`, a.mimeType ?? "image/jpeg");
+  };
+
+  const pickFile = async () => {
+    const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.[0]) return;
+    const a = res.assets[0];
+    sendFile(a.uri, a.name, a.mimeType ?? "application/octet-stream");
+  };
+
+  const openAttachment = async (url?: string | null) => {
+    if (url) await WebBrowser.openBrowserAsync(url);
   };
 
   return (
@@ -173,7 +270,7 @@ export default function ChatDetailScreen() {
               style={styles.headerBtn}
               onPress={() => router.push({
                 pathname: '/(screens)/chat/ChatMenu',
-                params: { projectId }
+                params: { projectId: roomId, name: roomName }
               })}
             >
               <Icon name="menu" size={24} color="#333" />
@@ -218,7 +315,11 @@ export default function ChatDetailScreen() {
               time={item.time}
               senderName={item.senderName}
               senderInitial={item.senderInitial}
-              readCount={item.readCount}
+              readCount={item.variant === "mine" && !isRead(item.createdAt ?? "") ? 1 : 0}
+              attachmentType={item.attachmentType}
+              attachmentUrl={item.attachmentUrl}
+              attachmentName={item.attachmentName}
+              onAttachmentPress={() => openAttachment(item.attachmentUrl)}
             />
           )}
           style={{ flex: 1, backgroundColor: '#F9FAFB' }}
@@ -230,9 +331,9 @@ export default function ChatDetailScreen() {
         {showPlusMenu && (
           <View style={[styles.plusMenuContainer, { backgroundColor: '#FFFFFF', bottom: 60 + (insets.bottom || 0) }]}>
             <View style={styles.plusMenuGrid}>
-              <PlusMenuItem icon="camera" label="카메라" onPress={() => setShowPlusMenu(false)} />
-              <PlusMenuItem icon="photo" label="사진" onPress={() => setShowPlusMenu(false)} />
-              <PlusMenuItem icon="file" label="파일" onPress={() => setShowPlusMenu(false)} />
+              <PlusMenuItem icon="camera" label="카메라" onPress={pickCamera} />
+              <PlusMenuItem icon="photo" label="사진" onPress={pickPhoto} />
+              <PlusMenuItem icon="file" label="파일" onPress={pickFile} />
               <PlusMenuItem icon="mic" label="녹음" onPress={() => setShowPlusMenu(false)} />
             </View>
           </View>

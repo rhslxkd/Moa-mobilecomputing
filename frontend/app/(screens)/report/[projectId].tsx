@@ -3,7 +3,7 @@
  * 기여도 리포트 — 피그마 디자인 기준
  */
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -14,15 +14,15 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import OptionSheet, { REPORT_OPTIONS } from "@/components/modals/OptionSheet";
 import Icon from "@/components/common/Icon";
 import MoaLogo from "@/components/common/MoaLogo";
+import { ReportAPI } from "@/services/api";
 
-// ── Mock 데이터 ────────────────────────────
 interface MemberReport {
   name: string;
   initial: string;
@@ -30,27 +30,6 @@ interface MemberReport {
   todosDone: number;
   todosTotal: number;
 }
-
-const MOCK_REPORTS: Record<string, MemberReport[]> = {
-  "1": [
-    { name: "박지민", initial: "박", contribution: 35, todosDone: 8,  todosTotal: 10 },
-    { name: "이지은", initial: "이", contribution: 28, todosDone: 6,  todosTotal: 8  },
-    { name: "김철수", initial: "김", contribution: 20, todosDone: 5,  todosTotal: 7  },
-    { name: "최유진", initial: "최", contribution: 17, todosDone: 4,  todosTotal: 6  },
-  ],
-  "2": [
-    { name: "박지민", initial: "박", contribution: 40, todosDone: 5, todosTotal: 6 },
-    { name: "이지은", initial: "이", contribution: 35, todosDone: 4, todosTotal: 5 },
-    { name: "김철수", initial: "김", contribution: 25, todosDone: 3, todosTotal: 4 },
-  ],
-  "3": [
-    { name: "박지민", initial: "박", contribution: 50, todosDone: 3, todosTotal: 4 },
-    { name: "이지은", initial: "이", contribution: 30, todosDone: 2, todosTotal: 3 },
-    { name: "김철수", initial: "김", contribution: 20, todosDone: 1, todosTotal: 2 },
-  ],
-};
-
-const MOCK_MEETINGS: Record<string, number> = { "1": 8, "2": 5, "3": 3 };
 
 // ── 다운로드 아이콘 ────────────────────────
 function DownloadIcon({ color }: { color: string }) {
@@ -97,12 +76,31 @@ export default function ReportScreen() {
   const [optionOpen, setOptionOpen] = useState(false);
 
   const project = projects.find((p) => p.id === projectId) ?? projects[0];
-  const members = MOCK_REPORTS[project.id] ?? MOCK_REPORTS["1"];
-  const meetingCount = MOCK_MEETINGS[project.id] ?? 0;
+
+  const [members, setMembers] = useState<MemberReport[]>([]);
+  const [meetingCount, setMeetingCount] = useState(0);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!projectId) return;
+      ReportAPI.get(projectId).then((r) => {
+        setMembers(r.members.map((m) => ({
+          name: m.name,
+          initial: m.name.charAt(0),
+          contribution: m.contribution,
+          todosDone: m.todos_done,
+          todosTotal: m.todos_total,
+        })));
+        setMeetingCount(r.meeting_count);
+      }).catch(() => {});
+    }, [projectId])
+  );
 
   // 통계 계산
   const myScore = members[0]?.contribution ?? 0;
-  const teamAvg = Math.round(members.reduce((s, m) => s + m.contribution, 0) / members.length);
+  const teamAvg = members.length
+    ? Math.round(members.reduce((s, m) => s + m.contribution, 0) / members.length)
+    : 0;
   const myRank = 1;
 
   return (

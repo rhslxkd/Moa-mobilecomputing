@@ -18,6 +18,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/contexts/AuthContext";
+import { AuthAPI } from "@/services/api";
 import InputBox from "@/components/common/InputBox";
 import Button from "@/components/common/Button";
 import Icon from "@/components/common/Icon";
@@ -50,16 +51,23 @@ export default function ProfileEditScreen() {
     return ok;
   };
 
+  const { fetchUser } = useAuth();
+
   const handleSave = async () => {
     if (!validate()) return;
     setLoading(true);
     try {
-      // TODO: API 연동
-      await new Promise((r) => setTimeout(r, 500));
+      await AuthAPI.updateProfile({
+        name: name.trim(),
+        organization_name: org.trim() || undefined,
+        department: dept.trim() || undefined,
+        student_id: sid.trim() || undefined,
+      });
+      await fetchUser().catch(() => {});
       Alert.alert("완료", "회원정보가 수정되었습니다.");
       router.back();
-    } catch {
-      Alert.alert("오류", "수정에 실패했습니다. 다시 시도해주세요.");
+    } catch (e: any) {
+      Alert.alert("오류", e?.message ?? "수정에 실패했습니다. 다시 시도해주세요.");
     } finally {
       setLoading(false);
     }

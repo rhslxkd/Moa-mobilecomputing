@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -12,11 +12,13 @@ import {
   TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { SvgXml } from "react-native-svg";
 import Icon from "@/components/common/Icon";
 import { Swipeable, RectButton } from "react-native-gesture-handler";
+import { ChatAPI, ChatRoomDTO } from "@/services/api";
+import { supabase } from "@/lib/supabase";
 
 type FilterType = "all" | "unread" | "gemini";
 
@@ -33,12 +35,31 @@ interface ChatRoom {
   isMuted?: boolean;
 }
 
-const INITIAL_ROOMS: ChatRoom[] = [
-  { id: "t1", name: "AI 챗봇 개발 프로젝트", initial: "AI", lastMessage: "박지민: 오늘 스프린트 리뷰 완료했습니다", time: "8시간 전", unread: 1, color: "#00A9EC", memberCount: 5 },
-  { id: "t2", name: "모바일 앱 디자인", initial: "모", lastMessage: "이지은: 피그마 링크 공유할게요", time: "3월 20일", unread: 0, color: "#7C3AED", memberCount: 4 },
-  { id: "t3", name: "데이터 분석 프로젝트", initial: "데", lastMessage: "김철수: 분석 결과 첨부했어요", time: "3월 20일", unread: 0, color: "#16A34A", memberCount: 3 },
-  { id: "p1", name: "이지은", initial: "이", lastMessage: "내일 회의 시간 괜찮으세요?", time: "3월 20일", unread: 1, color: "#A78BFA", memberCount: 1 },
-];
+const ROOM_COLORS = ["#00A9EC", "#7C3AED", "#16A34A", "#F59E0B", "#DC2626", "#A78BFA"];
+const colorFor = (s: string) =>
+  ROOM_COLORS[[...s].reduce((a, c) => a + c.charCodeAt(0), 0) % ROOM_COLORS.length];
+
+function relTime(iso: string | null): string {
+  if (!iso) return "";
+  const diff = (Date.now() - new Date(iso).getTime()) / 1000;
+  if (diff < 60) return "방금";
+  if (diff < 3600) return `${Math.floor(diff / 60)}분 전`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}시간 전`;
+  return new Date(iso).toLocaleDateString("ko-KR", { month: "long", day: "numeric" });
+}
+
+function dtoToRoom(d: ChatRoomDTO): ChatRoom {
+  return {
+    id: d.id,
+    name: d.name,
+    initial: d.name.charAt(0),
+    lastMessage: d.last_message ?? "대화를 시작해보세요",
+    time: relTime(d.last_message_at),
+    unread: d.unread_count,
+    color: colorFor(d.name),
+    memberCount: d.member_count,
+  };
+}
 
 const KAKAO_USER_XML = `<svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <circle cx="12" cy="9.5" r="4" fill="white"/>
@@ -201,7 +222,31 @@ export default function ChatScreen() {
   const C = useTheme();
   const router = useRouter();
   const [filter, setFilter] = useState<FilterType>("all");
-  const [rooms, setRooms] = useState<ChatRoom[]>(INITIAL_ROOMS);
+  const [rooms, setRooms] = useState<ChatRoom[]>([]);
+
+  const loadRooms = useCallback(() => {
+    ChatAPI.rooms().then((ds) => setRooms(ds.map(dtoToRoom))).catch(() => {});
+  }, []);
+
+  // 포커스 시 목록 갱신
+  useFocusEffect(loadRooms);
+
+  // 콜백 ref로 최신 유지 (채널은 마운트 시 1번만 구독)
+  const loadRoomsRef = useRef(loadRooms);
+  loadRoomsRef.current = loadRooms;
+
+  // 새 메시지 실시간 감지 → 방 목록 갱신
+  useEffect(() => {
+    const channel = supabase
+      .channel("chat-tab-messages")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "messages" },
+        () => loadRoomsRef.current(),
+      )
+      .subscribe();
+    return () => { supabase.removeChannel(channel); };
+  }, []);
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -358,7 +403,7 @@ export default function ChatScreen() {
         renderItem={({ item }) => (
           <ChatRoomItem
             room={item}
-            onPress={() => router.push(`/(screens)/chat/${item.id}`)}
+            onPress={() => router.push({ pathname: `/(screens)/chat/${item.id}`, params: { name: item.name } } as any)}
             onToggleUnread={handleToggleUnread}
             onToggleMute={handleToggleMute}
             onTogglePin={handleTogglePin}

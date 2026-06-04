@@ -1,5 +1,5 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, UploadFile, File
 from app.schemas.meeting import MeetingCreate, MeetingResponse
 from app.routers.auth import bearer_token
 import app.services.meeting as meeting_svc
@@ -28,3 +28,13 @@ def get_meeting(meeting_id: str, token: str = Depends(bearer_token)):
 @router.delete("/{meeting_id}", status_code=204)
 def delete_meeting(meeting_id: str, token: str = Depends(bearer_token)):
     meeting_svc.delete_meeting(meeting_id, token)
+
+
+@router.post("/{meeting_id}/audio", response_model=MeetingResponse)
+async def upload_audio(
+    meeting_id: str,
+    file: UploadFile = File(...),
+    token: str = Depends(bearer_token),
+):
+    audio_bytes = await file.read()
+    return meeting_svc.process_audio(meeting_id, audio_bytes, file.filename or "audio.m4a", token)

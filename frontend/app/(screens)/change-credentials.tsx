@@ -17,6 +17,8 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/contexts/AuthContext";
+import { AuthAPI } from "@/services/api";
 import InputBox from "@/components/common/InputBox";
 import Button from "@/components/common/Button";
 import Icon from "@/components/common/Icon";
@@ -27,6 +29,7 @@ type Tab = "id" | "password";
 export default function ChangeCredentialsScreen() {
   const C = useTheme();
   const router = useRouter();
+  const { fetchUser } = useAuth();
   const [tab, setTab] = useState<Tab>("password");
 
   // 비밀번호 변경
@@ -61,11 +64,11 @@ export default function ChangeCredentialsScreen() {
 
     setPwLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 500)); // TODO: API 연동
+      await AuthAPI.changePassword({ current_password: currentPw, new_password: newPw });
       Alert.alert("완료", "비밀번호가 변경되었습니다.");
       router.back();
-    } catch {
-      Alert.alert("오류", "비밀번호 변경에 실패했습니다.");
+    } catch (e: any) {
+      Alert.alert("오류", e?.message ?? "비밀번호 변경에 실패했습니다.");
     } finally {
       setPwLoading(false);
     }
@@ -87,11 +90,12 @@ export default function ChangeCredentialsScreen() {
 
     setIdLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 500)); // TODO: API 연동
+      await AuthAPI.changeUsername({ new_username: newId.trim(), password: idPw });
+      await fetchUser().catch(() => {});
       Alert.alert("완료", "아이디가 변경되었습니다.");
       router.back();
-    } catch {
-      Alert.alert("오류", "아이디 변경에 실패했습니다.");
+    } catch (e: any) {
+      Alert.alert("오류", e?.message ?? "아이디 변경에 실패했습니다.");
     } finally {
       setIdLoading(false);
     }

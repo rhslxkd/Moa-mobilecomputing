@@ -19,6 +19,7 @@ import {
 } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import type { Project, Member } from "@/contexts/ProjectContext";
+import { FriendsAPI, FriendDTO } from "@/services/api";
 import Icon from "@/components/common/Icon";
 import ColorPickerSheet from "@/components/modals/ColorPickerSheet";
 
@@ -91,6 +92,11 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
   const [newRoles, setNewRoles] = useState<string[]>([]);
   const [newRoleInput, setNewRoleInput] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
+  const [friends, setFriends] = useState<FriendDTO[]>([]);
+
+  useEffect(() => {
+    if (isOpen) FriendsAPI.list().then(setFriends).catch(() => {});
+  }, [isOpen]);
 
   useEffect(() => {
     setName(project.name);
@@ -107,9 +113,17 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
   }, [project.id, isOpen]);
 
   function addMember() {
-    if (!newName.trim()) { Alert.alert("오류", "이름을 입력해주세요."); return; }
+    const trimmed = newName.trim();
+    if (!trimmed) { Alert.alert("오류", "이름을 입력해주세요."); return; }
     if (newRoles.length === 0) { Alert.alert("오류", "역할을 최소 1개 선택해주세요."); return; }
-    setMembers((prev) => [...prev, { id: uid(), name: newName.trim(), roles: newRoles }]);
+    // 친구 이름/아이디와 일치하면 실제 계정 연결 → 초대 처리
+    const matched = friends.find((f) => f.name === trimmed || f.username === trimmed);
+    setMembers((prev) => [...prev, {
+      id: uid(),
+      userId: matched?.user_id,
+      name: matched?.name ?? trimmed,
+      roles: newRoles,
+    }]);
     setNewName(""); setNewRoles([]); setNewRoleInput(""); setShowAddRow(false);
   }
 

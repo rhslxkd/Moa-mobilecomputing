@@ -540,6 +540,7 @@ type TabType = "personal" | "project";
 export default function AddTodoScreen() {
   const C = useTheme();
   const router = useRouter();
+  const { projects } = useProject();
   const today = new Date();
   const nextMonth = new Date(today.getFullYear(), today.getMonth() + 1, today.getDate());
 
@@ -549,6 +550,14 @@ export default function AddTodoScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+
+  // 선택된 프로젝트의 멤버 목록
+  const selectedProject = projects.find(p => p.id === selectedProjectId);
+  const projectMembers = selectedProject?.members ?? [];
+
+  // 프로젝트 바뀌면 담당자 선택 초기화
+  useEffect(() => { setSelectedMemberId(null); }, [selectedProjectId]);
 
   // 시작일/시간
   const [startDate, setStartDate] = useState(today);
@@ -577,6 +586,7 @@ export default function AddTodoScreen() {
       title: title.trim(),
       description: description.trim() || undefined,
       project_id: tab === "project" ? selectedProjectId ?? undefined : undefined,
+      assignee_member_id: tab === "project" ? selectedMemberId ?? undefined : undefined,
       due_date: endDate.toISOString().split("T")[0],
       start_date: startDate.toISOString().split("T")[0],
     });
@@ -641,6 +651,54 @@ export default function AddTodoScreen() {
               selectedId={selectedProjectId}
               onSelect={setSelectedProjectId}
             />
+          )}
+
+          {/* 담당자 선택 (프로젝트 선택 시) */}
+          {tab === "project" && selectedProjectId && projectMembers.length > 0 && (
+            <View style={[s.assigneeSection, { borderBottomColor: C.border }]}>
+              <Text style={[s.assigneeLabel, { color: C.textMuted }]}>담당자</Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={s.assigneeRow}
+                keyboardShouldPersistTaps="handled"
+              >
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setSelectedMemberId(null)}
+                  style={[
+                    s.assigneeChip,
+                    { borderColor: C.border },
+                    selectedMemberId === null && { backgroundColor: C.primary, borderColor: C.primary },
+                  ]}
+                >
+                  <Text style={[
+                    s.assigneeChipText,
+                    { color: selectedMemberId === null ? "#fff" : C.textMuted },
+                  ]}>없음</Text>
+                </TouchableOpacity>
+                {projectMembers.map((m) => {
+                  const active = selectedMemberId === m.id;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      activeOpacity={0.7}
+                      onPress={() => setSelectedMemberId(m.id)}
+                      style={[
+                        s.assigneeChip,
+                        { borderColor: C.border },
+                        active && { backgroundColor: C.primary, borderColor: C.primary },
+                      ]}
+                    >
+                      <Text style={[
+                        s.assigneeChipText,
+                        { color: active ? "#fff" : C.text },
+                      ]}>{m.name}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            </View>
           )}
 
           {/* 제목 */}
@@ -759,4 +817,20 @@ const s = StyleSheet.create({
     padding: 0,
     paddingTop: Platform.OS === "ios" ? 0 : 2,
   },
+
+  // 담당자 선택
+  assigneeSection: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    gap: 8,
+  },
+  assigneeLabel: { fontSize: 14, fontWeight: "500" },
+  assigneeRow: { gap: 8, paddingRight: 4 },
+  assigneeChip: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderWidth: 1,
+  },
+  assigneeChipText: { fontSize: 13, fontWeight: "600" },
 });

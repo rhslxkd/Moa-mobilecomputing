@@ -23,7 +23,7 @@
  */
 
 import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import { View, Text, StyleSheet, Image, TouchableOpacity } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
 
@@ -31,9 +31,13 @@ interface ChatBoxProps {
   variant: "mine" | "theirs";
   message: string;
   time: string;
-  senderName?: string;    // theirs일 때 발신자 이름
-  senderInitial?: string; // theirs일 때 아바타 이니셜
-  readCount?: number;     // 안읽은 인원수 (카톡 스타일 '1')
+  senderName?: string;
+  senderInitial?: string;
+  readCount?: number;
+  attachmentType?: "image" | "file" | null;
+  attachmentUrl?: string | null;
+  attachmentName?: string | null;
+  onAttachmentPress?: () => void;
 }
 
 export default function ChatBox({
@@ -43,9 +47,56 @@ export default function ChatBox({
   senderName,
   senderInitial,
   readCount,
+  attachmentType,
+  attachmentUrl,
+  attachmentName,
+  onAttachmentPress,
 }: ChatBoxProps) {
   const C = useTheme();
   const isMine = variant === "mine";
+  const hasAttachment = !!attachmentType;
+
+  // 첨부 렌더 (이미지 / 파일)
+  const renderAttachment = () => {
+    if (attachmentType === "image" && attachmentUrl) {
+      return (
+        <TouchableOpacity activeOpacity={0.85} onPress={onAttachmentPress}>
+          <Image source={{ uri: attachmentUrl }} style={styles.attachImage} resizeMode="cover" />
+        </TouchableOpacity>
+      );
+    }
+    // 파일 카드
+    return (
+      <TouchableOpacity
+        activeOpacity={0.75}
+        onPress={onAttachmentPress}
+        style={[styles.fileCard, { backgroundColor: isMine ? "rgba(255,255,255,0.2)" : "#FFFFFF", borderColor: isMine ? "rgba(255,255,255,0.3)" : C.border }]}
+      >
+        <View style={styles.fileIconBox}>
+          <Text style={{ fontSize: 20 }}>📄</Text>
+        </View>
+        <Text style={[styles.fileName, { color: isMine ? "#FFFFFF" : C.text }]} numberOfLines={1}>
+          {attachmentName ?? "파일"}
+        </Text>
+      </TouchableOpacity>
+    );
+  };
+
+  // 버블 내용 (첨부 or 텍스트)
+  const bubbleContent = (mine: boolean) => {
+    if (hasAttachment) {
+      // 이미지는 패딩 없이, 파일은 카드
+      if (attachmentType === "image") return renderAttachment();
+      return renderAttachment();
+    }
+    return (
+      <Text style={mine ? styles.messageMine : [styles.messageTheirs, { color: C.text }]}>
+        {message}
+      </Text>
+    );
+  };
+
+  const imageNoBubble = hasAttachment && attachmentType === "image";
 
   if (isMine) {
     return (
@@ -56,16 +107,19 @@ export default function ChatBox({
           )}
           <Text style={[styles.time, { color: C.textMuted }]}>{time}</Text>
         </View>
-        <View style={[styles.bubble, styles.bubbleMine, { backgroundColor: '#00A9EC' }]}>
-          <Text style={styles.messageMine}>{message}</Text>
-        </View>
+        {imageNoBubble ? (
+          renderAttachment()
+        ) : (
+          <View style={[styles.bubble, styles.bubbleMine, { backgroundColor: '#00A9EC' }]}>
+            {bubbleContent(true)}
+          </View>
+        )}
       </View>
     );
   }
 
   return (
     <View style={[styles.row, styles.rowLeft]}>
-      {/* 아바타 */}
       <View style={[styles.avatar, { backgroundColor: '#00A9EC' }]}>
         <Text style={[styles.avatarText, { color: '#FFFFFF' }]}>
           {senderInitial ?? "?"}
@@ -79,11 +133,13 @@ export default function ChatBox({
           </Text>
         )}
         <View style={styles.rowWrapper}>
-          <View style={[styles.bubble, styles.bubbleTheirs, { backgroundColor: '#F2F2F2' }]}>
-            <Text style={[styles.messageTheirs, { color: C.text }]}>
-              {message}
-            </Text>
-          </View>
+          {imageNoBubble ? (
+            renderAttachment()
+          ) : (
+            <View style={[styles.bubble, styles.bubbleTheirs, { backgroundColor: '#F2F2F2' }]}>
+              {bubbleContent(false)}
+            </View>
+          )}
           <View style={styles.metaLeft}>
             {readCount !== undefined && readCount > 0 && (
               <Text style={[styles.readStatus, { color: C.primary }]}>{readCount}</Text>
@@ -178,4 +234,29 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: "600",
   },
+
+  // 첨부 파일/이미지
+  attachImage: {
+    width: 200,
+    height: 200,
+    borderRadius: 14,
+    backgroundColor: "#E5E5E5",
+  },
+  fileCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    maxWidth: 220,
+  },
+  fileIconBox: {
+    width: 32,
+    height: 32,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  fileName: { flex: 1, fontSize: 14, fontWeight: "500" },
 });

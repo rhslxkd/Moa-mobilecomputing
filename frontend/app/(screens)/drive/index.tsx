@@ -2,7 +2,7 @@
  * app/(screens)/drive/index.tsx
  */
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -18,13 +18,14 @@ import {
   StatusBar,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Svg, { Path, G } from "react-native-svg";
 import { BlurView } from "expo-blur";
 import { useTheme, useIsDark } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
+import { DriveAPI } from "@/services/api";
 
 const { width: SW } = Dimensions.get("window");
 const H_PAD = 21;
@@ -316,6 +317,14 @@ export default function DriveScreen() {
   const [personalFolders, setPersonalFolders] = useState<PersonalFolder[]>([]);
   const [newFolderVisible, setNewFolderVisible] = useState(false);
 
+  const loadFolders = useCallback(() => {
+    DriveAPI.listFolders({}).then((fs) =>
+      setPersonalFolders(fs.map((f) => ({ id: f.id, name: f.name, count: f.item_count, isPersonal: true as const })))
+    ).catch(() => {});
+  }, []);
+
+  useFocusEffect(loadFolders);
+
   // 다중 선택
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const isSelecting = selected.size > 0;
@@ -327,7 +336,7 @@ export default function DriveScreen() {
 
   const FILTER_OPTIONS: FilterType[] = ["전체", "프로젝트 폴더만", "개인 폴더만"];
 
-  const projectFolders = projects.map(p => ({ id: p.id, name: p.name, count: 7, isPersonal: false as const }));
+  const projectFolders = projects.map(p => ({ id: p.id, name: p.name, count: 0, isPersonal: false as const }));
   const allFolders = [
     ...(filter !== "개인 폴더만" ? projectFolders : []),
     ...(filter !== "프로젝트 폴더만" ? personalFolders : []),
@@ -348,13 +357,17 @@ export default function DriveScreen() {
     router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: id, folderName: name, isPersonal: isPersonal ? "1" : "0" } } as any);
   };
 
-  const handleCreateFolder = (name: string) => {
-    setPersonalFolders(prev => [...prev, { id: `pf_${Date.now()}`, name, count: 0, isPersonal: true }]);
+  const handleCreateFolder = async (name: string) => {
+    await DriveAPI.createFolder({ name }).catch(() => {});
+    loadFolders();
   };
 
-  const handleDeleteSelected = () => {
-    setPersonalFolders(prev => prev.filter(f => !selected.has(f.id)));
+  const handleDeleteSelected = async () => {
+    // 개인 폴더만 삭제 가능 (프로젝트 폴더는 제외)
+    const personalIds = personalFolders.filter(f => selected.has(f.id)).map(f => f.id);
+    await Promise.all(personalIds.map(id => DriveAPI.deleteFolder(id).catch(() => {})));
     setSelected(new Set());
+    loadFolders();
   };
 
   const headerTitle = isSelecting

@@ -21,6 +21,7 @@ import { useTheme } from "@/hooks/useTheme";
 import type { Project, Member } from "@/contexts/ProjectContext";
 import Icon from "@/components/common/Icon";
 import ColorPickerSheet from "@/components/modals/ColorPickerSheet";
+import { FriendsAPI, FriendDTO } from "@/services/api";
 
 // ── 유틸 ─────────────────────────────────────────────────────────
 function isValidDate(s: string) {
@@ -98,6 +99,8 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
   const [newMemberRoles, setNewMemberRoles] = useState<string[]>([]);
   const [newMemberRoleInput, setNewMemberRoleInput] = useState("");
   const [showAddRow, setShowAddRow] = useState(false);
+  const [showFriendPicker, setShowFriendPicker] = useState(false);
+  const [friends, setFriends] = useState<FriendDTO[]>([]);
 
   // 열릴 때마다 초기화
   useEffect(() => {
@@ -115,13 +118,34 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
       setNewMemberName("");
       setNewMemberRoles([]);
       setNewMemberRoleInput("");
+      // 친구 목록 로드
+      FriendsAPI.list().then(setFriends).catch(() => {});
     }
   }, [isOpen]);
 
+  function addFriendAsMember(friend: FriendDTO) {
+    if (members.some((m) => m.userId === friend.user_id)) return; // 이미 추가됨
+    setMembers((prev) => [
+      ...prev,
+      { id: uid(), userId: friend.user_id, name: friend.name, roles: ["팀원"] },
+    ]);
+    setShowFriendPicker(false);
+  }
+
   function addMember() {
-    if (!newMemberName.trim()) { Alert.alert("오류", "이름을 입력해주세요."); return; }
+    const trimmedName = newMemberName.trim();
+    if (!trimmedName) { Alert.alert("오류", "이름을 입력해주세요."); return; }
     if (newMemberRoles.length === 0) { Alert.alert("오류", "역할을 최소 1개 선택해주세요."); return; }
-    setMembers((prev) => [...prev, { id: uid(), name: newMemberName.trim(), roles: newMemberRoles }]);
+    // 입력한 이름/아이디가 친구 목록과 일치하면 실제 계정(user_id) 자동 연결 → 초대로 처리
+    const matched = friends.find(
+      (f) => f.name === trimmedName || f.username === trimmedName
+    );
+    setMembers((prev) => [...prev, {
+      id: uid(),
+      userId: matched?.user_id,   // 친구면 자동 연결
+      name: matched?.name ?? trimmedName,
+      roles: newMemberRoles,
+    }]);
     setNewMemberName(""); setNewMemberRoles([]); setNewMemberRoleInput(""); setShowAddRow(false);
   }
 
@@ -367,11 +391,20 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
 
               {/* 팀원 추가 버튼 */}
               {!showAddRow && (
-                <TouchableOpacity onPress={() => setShowAddRow(true)} activeOpacity={0.7}
-                  style={[styles.addMemberBtn, members.length > 0 && { borderTopWidth: 1, borderTopColor: C.border }]}>
-                  <Icon name="add" size={16} color="#00A9EC" />
-                  <Text style={styles.addMemberText}>팀원 추가</Text>
-                </TouchableOpacity>
+                <View style={{ flexDirection: "row" }}>
+                  <TouchableOpacity onPress={() => setShowAddRow(true)} activeOpacity={0.7}
+                    style={[styles.addMemberBtn, { flex: 1 }, members.length > 0 && { borderTopWidth: 1, borderTopColor: C.border }]}>
+                    <Icon name="add" size={16} color="#00A9EC" />
+                    <Text style={styles.addMemberText}>직접 추가</Text>
+                  </TouchableOpacity>
+                  {friends.length > 0 && (
+                    <TouchableOpacity onPress={() => setShowFriendPicker(true)} activeOpacity={0.7}
+                      style={[styles.addMemberBtn, { flex: 1, borderLeftWidth: 1, borderLeftColor: C.border }, members.length > 0 && { borderTopWidth: 1, borderTopColor: C.border }]}>
+                      <Icon name="add" size={16} color="#7C3AED" />
+                      <Text style={[styles.addMemberText, { color: "#7C3AED" }]}>친구 초대</Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
             </View>
 
@@ -379,6 +412,35 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      {/* 친구 선택 모달 */}
+      <Modal visible={showFriendPicker} transparent animationType="slide" onRequestClose={() => setShowFriendPicker(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={() => setShowFriendPicker(false)}>
+          <TouchableOpacity activeOpacity={1} style={[{ position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: 400 }, { backgroundColor: C.bgCard }]}>
+            <Text style={[{ fontSize: 16, fontWeight: "700", marginBottom: 12 }, { color: C.text }]}>친구를 팀원으로 추가</Text>
+            {friends.map((f) => {
+              const already = members.some((m) => m.userId === f.user_id);
+              return (
+                <TouchableOpacity
+                  key={f.friendship_id}
+                  onPress={() => !already && addFriendAsMember(f)}
+                  activeOpacity={already ? 1 : 0.7}
+                  style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, gap: 12, opacity: already ? 0.4 : 1 }}
+                >
+                  <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#7C3AED20", alignItems: "center", justifyContent: "center" }}>
+                    <Text style={{ fontSize: 16, fontWeight: "800", color: "#7C3AED" }}>{f.name.charAt(0)}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.text, fontWeight: "600" }}>{f.name}</Text>
+                    <Text style={{ color: C.textMuted, fontSize: 12 }}>@{f.username}</Text>
+                  </View>
+                  {already && <Text style={{ color: C.textMuted, fontSize: 12 }}>추가됨</Text>}
+                </TouchableOpacity>
+              );
+            })}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </Modal>
   );
 }

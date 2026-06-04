@@ -2,21 +2,43 @@
  * app/(screens)/drive/[folderId].tsx — 폴더 내부
  */
 
-import React, { useState } from "react";
+import React, { useState, useCallback } from "react";
 import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Dimensions, Modal, TextInput, Alert, KeyboardAvoidingView, Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter, useLocalSearchParams } from "expo-router";
+import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import Svg, { Path, Rect, G } from "react-native-svg";
 import { BlurView } from "expo-blur";
+import * as DocumentPicker from "expo-document-picker";
+import * as WebBrowser from "expo-web-browser";
 import { useTheme, useIsDark } from "@/hooks/useTheme";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
+import { DriveAPI, DriveFileDTO, DriveFolderDTO } from "@/services/api";
 
 const { width: SW } = Dimensions.get("window");
 const H_PAD = 21;
+
+// ── 파일 메타 헬퍼 ────────────────────────────────────────
+function fileTypeFromName(name: string): "pdf" | "image" | "doc" | "zip" {
+  const ext = name.split(".").pop()?.toLowerCase() ?? "";
+  if (["png", "jpg", "jpeg", "gif", "webp", "heic"].includes(ext)) return "image";
+  if (ext === "pdf") return "pdf";
+  if (["zip", "rar", "7z", "tar", "gz"].includes(ext)) return "zip";
+  return "doc";
+}
+function fmtSize(bytes: number | null): string {
+  if (!bytes) return "0B";
+  if (bytes < 1024) return `${bytes}B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)}KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)}MB`;
+}
+function fmtDate(iso: string): string {
+  const d = new Date(iso);
+  return `${d.getFullYear()}.${String(d.getMonth() + 1).padStart(2, "0")}.${String(d.getDate()).padStart(2, "0")}`;
+}
 
 // ── 폴더 SVG 아이콘 ────────────────────────────────────────
 function FolderSvg({ color, size = 44 }: { color: string; size?: number }) {
@@ -73,19 +95,6 @@ function DownloadIcon({ color }: { color: string }) {
 
 // ── 파일 데이터 ───────────────────────────────────────────
 interface FileItem { id: string; name: string; type: FileType; size: string; date: string }
-
-const MOCK_FILES: FileItem[] = [
-  { id: "f1", name: "프로젝트 기획서.pdf",     type: "pdf",   size: "2.3MB",  date: "2026.03.15" },
-  { id: "f2", name: "UI 디자인 시안.png",      type: "image", size: "4.1MB",  date: "2026.03.14" },
-  { id: "f3", name: "1차 회의록.docx",          type: "doc",   size: "124KB",  date: "2026.03.10" },
-  { id: "f4", name: "API 명세서.pdf",           type: "pdf",   size: "890KB",  date: "2026.03.08" },
-  { id: "f5", name: "화면 캡처.jpg",            type: "image", size: "1.8MB",  date: "2026.03.07" },
-  { id: "f6", name: "소스코드.zip",             type: "zip",   size: "18.4MB", date: "2026.03.05" },
-];
-const MOCK_SUBFOLDERS: FileItem[] = [
-  { id: "sf1", name: "1차 스프린트", type: "folder", size: "3개의 항목", date: "2026.03.15" },
-  { id: "sf2", name: "2차 스프린트", type: "folder", size: "5개의 항목", date: "2026.03.20" },
-];
 
 // ── 새 서브폴더 바텀시트 ──────────────────────────────────
 interface SubFolderSheetProps { visible: boolean; onClose: () => void; onConfirm: (name: string) => void; }
@@ -164,28 +173,92 @@ export default function FolderDetailScreen() {
   const isDark = useIsDark();
   const router = useRouter();
   const { folderId, folderName, isPersonal } = useLocalSearchParams<{ folderId: string; folderName: string; isPersonal: string }>();
-  const isPersonalFolder = isPersonal === "1";
+  // isPersonal "1" → folder_id 컨텍스트 / "0" → project_id 컨텍스트(프로젝트 폴더 루트)
+  const isFolderCtx = isPersonal === "1";
+  const ctx = isFolderCtx ? { folderId } : { projectId: folderId };
+  const folderCreateBody = isFolderCtx
+    ? { parent_id: folderId }
+    : { project_id: folderId };
 
-  const [files, setFiles] = useState<FileItem[]>(MOCK_FILES);
-  const [subFolders, setSubFolders] = useState<FileItem[]>(isPersonalFolder ? [] : MOCK_SUBFOLDERS);
+  const [files, setFiles] = useState<FileItem[]>([]);
+  const [subFolders, setSubFolders] = useState<FileItem[]>([]);
   const [subFolderVisible, setSubFolderVisible] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
+  const [uploading, setUploading] = useState(false);
 
   const SORT_OPTIONS = ["제목 · 오름차순", "제목 · 내림차순", "생성 날짜 · 오름차순", "생성 날짜 · 내림차순"];
   const [sortOption, setSortOption] = useState(SORT_OPTIONS[3]);
 
+  const load = useCallback(() => {
+    DriveAPI.listFiles(ctx).then((fs) =>
+      setFiles(fs.map((f) => ({
+        id: f.id, name: f.name, type: fileTypeFromName(f.name),
+        size: fmtSize(f.size_bytes), date: fmtDate(f.created_at),
+      })))
+    ).catch(() => {});
+    DriveAPI.listFolders(isFolderCtx ? { parentId: folderId } : { projectId: folderId }).then((fos) =>
+      setSubFolders(fos.map((fo) => ({
+        id: fo.id, name: fo.name, type: "folder" as const,
+        size: `${fo.item_count}개의 항목`, date: fmtDate(fo.created_at),
+      })))
+    ).catch(() => {});
+  }, [folderId, isFolderCtx]);
+
+  useFocusEffect(load);
+
   const allItems = [...subFolders, ...files];
 
-  const handleCreateSubfolder = (name: string) => {
-    setSubFolders(prev => [...prev, { id: `sf_${Date.now()}`, name, type: "folder", size: "0개의 항목", date: new Date().toLocaleDateString("ko-KR").replace(/\.\s?/g, ".").slice(0, 10) }]);
+  const handleCreateSubfolder = async (name: string) => {
+    await DriveAPI.createFolder({ name, ...folderCreateBody }).catch(() => {});
+    load();
   };
 
-  const handleDeleteFile = () => {
+  const handleDeleteFile = async () => {
     if (!selectedFile) return;
-    setFiles(prev => prev.filter(f => f.id !== selectedFile.id));
-    setSubFolders(prev => prev.filter(f => f.id !== selectedFile.id));
+    if (selectedFile.type === "folder") {
+      await DriveAPI.deleteFolder(selectedFile.id).catch(() => {});
+    } else {
+      await DriveAPI.deleteFile(selectedFile.id).catch(() => {});
+    }
+    load();
+  };
+
+  const handleUpload = async () => {
+    if (uploading) return;
+    const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
+    if (res.canceled || !res.assets?.[0]) return;
+    const asset = res.assets[0];
+    setUploading(true);
+    try {
+      await DriveAPI.uploadFile(
+        asset.uri, asset.name, asset.mimeType ?? "application/octet-stream", ctx,
+      );
+      load();
+    } catch (e: any) {
+      Alert.alert("업로드 실패", e?.message ?? "파일 업로드에 실패했어요.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handleDownload = async (file: FileItem) => {
+    if (file.type === "folder") return;
+    try {
+      const { url } = await DriveAPI.downloadUrl(file.id);
+      if (url) await WebBrowser.openBrowserAsync(url);
+    } catch {
+      Alert.alert("다운로드 실패", "다운로드 링크를 가져오지 못했어요.");
+    }
+  };
+
+  const handleItemPress = (item: FileItem) => {
+    if (item.type === "folder") {
+      router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: item.id, folderName: item.name, isPersonal: "1" } } as any);
+    } else {
+      handleDownload(item);
+    }
   };
 
   return (
@@ -247,6 +320,7 @@ export default function FolderDetailScreen() {
                 key={item.id}
                 style={[s.fileRow, { backgroundColor: "#FFFFFF", borderBottomColor: "#EEEEEE" }]}
                 activeOpacity={0.7}
+                onPress={() => handleItemPress(item)}
               >
                 <FileIcon type={item.type} size={36} />
                 <View style={{ flex: 1 }}>
@@ -266,15 +340,26 @@ export default function FolderDetailScreen() {
         </ScrollView>
       </View>
 
-      {/* ── 새 폴더 추가 버튼 (프로젝트 폴더에서만) ── */}
-      {!isPersonalFolder && (
-        <View style={[s.addBtnWrap, { backgroundColor: "#FFFFFF", borderTopColor: "#EEEEEE" }]}>
-          <TouchableOpacity style={s.addBtn} onPress={() => setSubFolderVisible(true)} activeOpacity={0.85}>
-            <Icon name="add" size={20} color="#fff" />
-            <Text style={s.addBtnText}>새 폴더 추가</Text>
-          </TouchableOpacity>
-        </View>
-      )}
+      {/* ── 하단: 파일 업로드 + 새 폴더 추가 ── */}
+      <View style={[s.addBtnWrap, { backgroundColor: "#FFFFFF", borderTopColor: "#EEEEEE", flexDirection: "row", gap: 10 }]}>
+        <TouchableOpacity
+          style={[s.addBtn, { flex: 1, backgroundColor: uploading ? "#88C9E8" : "#00A9EC" }]}
+          onPress={handleUpload}
+          activeOpacity={0.85}
+          disabled={uploading}
+        >
+          <Icon name="add" size={20} color="#fff" />
+          <Text style={s.addBtnText}>{uploading ? "업로드 중…" : "파일 업로드"}</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[s.addBtn, { flex: 1, backgroundColor: "#7C3AED" }]}
+          onPress={() => setSubFolderVisible(true)}
+          activeOpacity={0.85}
+        >
+          <Icon name="add" size={20} color="#fff" />
+          <Text style={s.addBtnText}>새 폴더</Text>
+        </TouchableOpacity>
+      </View>
 
       <SubFolderSheet visible={subFolderVisible} onClose={() => setSubFolderVisible(false)} onConfirm={handleCreateSubfolder} />
       <DelSheet visible={deleteVisible} name={selectedFile?.name ?? ""} onClose={() => setDeleteVisible(false)} onConfirm={handleDeleteFile} />

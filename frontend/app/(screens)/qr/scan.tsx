@@ -11,7 +11,7 @@
  * 등록 위치: app/_layout.tsx (screens)/qr/scan
  */
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -19,9 +19,12 @@ import {
   StyleSheet,
   Dimensions,
   Platform,
+  Alert,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
+import { CameraView, useCameraPermissions } from "expo-camera";
+import { FriendsAPI } from "@/services/api";
 
 const { width } = Dimensions.get("window");
 const QR_BOX_SIZE = width * 0.65;
@@ -55,22 +58,47 @@ function Corner({ position }: { position: "tl" | "tr" | "bl" | "br" }) {
 export default function QRScanScreen() {
   const router = useRouter();
   const [scanned, setScanned] = useState(false);
+  const [permission, requestPermission] = useCameraPermissions();
+
+  useEffect(() => {
+    if (permission && !permission.granted && permission.canAskAgain) {
+      requestPermission();
+    }
+  }, [permission]);
 
   const handleClose = () => router.back();
 
-  const handleSimulateScan = () => {
-    // TODO: 실제 QR 스캔 (expo-camera 또는 expo-barcode-scanner 연결)
+  const handleBarcode = async ({ data }: { data: string }) => {
+    if (scanned) return;
     setScanned(true);
-    setTimeout(() => {
-      setScanned(false);
-      router.back();
-    }, 1200);
+    const username = data.trim();
+    try {
+      await FriendsAPI.request(username);
+      Alert.alert("요청 완료", `@${username}님에게 친구 요청을 보냈어요.`, [
+        { text: "확인", onPress: () => router.back() },
+      ]);
+    } catch (e: any) {
+      Alert.alert("요청 실패", e?.message ?? "친구 요청에 실패했어요.", [
+        { text: "다시 스캔", onPress: () => setScanned(false) },
+        { text: "닫기", onPress: () => router.back() },
+      ]);
+    }
   };
 
   return (
     <View style={styles.container}>
-      {/* 어두운 배경 */}
-      <View style={styles.overlay} />
+      {/* 카메라 (권한 있을 때) */}
+      {permission?.granted && (
+        <CameraView
+          style={StyleSheet.absoluteFill}
+          facing="back"
+          barcodeScannerSettings={{ barcodeTypes: ["qr"] }}
+          onBarcodeScanned={scanned ? undefined : handleBarcode}
+        />
+      )}
+
+      {/* 어두운 배경 (카메라 권한 있으면 투명) */}
+      <View style={[styles.overlay, permission?.granted && { backgroundColor: "transparent" }]} />
 
       <SafeAreaView style={styles.safe}>
         {/* 상단 헤더 */}
@@ -92,9 +120,7 @@ export default function QRScanScreen() {
             <View style={[styles.dimArea, { width: (width - QR_BOX_SIZE) / 2, height: QR_BOX_SIZE }]} />
 
             {/* QR 박스 */}
-            <TouchableOpacity
-              activeOpacity={0.9}
-              onPress={handleSimulateScan}
+            <View
               style={[
                 styles.qrBox,
                 { borderColor: scanned ? "#22C55E" : "rgba(255,255,255,0.15)" },
@@ -110,7 +136,7 @@ export default function QRScanScreen() {
                   <Text style={styles.scannedCheck}>✓</Text>
                 </View>
               )}
-            </TouchableOpacity>
+            </View>
 
             <View style={[styles.dimArea, { width: (width - QR_BOX_SIZE) / 2, height: QR_BOX_SIZE }]} />
           </View>

@@ -1,8 +1,10 @@
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
+from openai import RateLimitError, APIError, OpenAIError
 
 from app.core.supabase import supabase_admin
 from app.schemas.meeting import MeetingCreate, MeetingResponse, ParticipantResponse
+from app.services.transcribe import transcribe_audio, summarize_transcript
 
 
 def _get_user(token: str):
@@ -32,11 +34,13 @@ def _build(row: dict, participants: list[dict], project_name: str | None = None)
         project_name=project_name,
         duration_seconds=row.get("duration_seconds", 0),
         summary=row.get("summary") or [],
+        transcript=row.get("transcript"),
         participants=[
             ParticipantResponse(
                 id=p["id"],
                 name=p["name"],
                 speak_time_seconds=p.get("speak_time_seconds", 0),
+                member_id=p.get("member_id"),
             )
             for p in participants
         ],
@@ -100,7 +104,15 @@ def create_meeting(req: MeetingCreate, token: str) -> MeetingResponse:
     if req.participants:
         parts = (
             supabase_admin.table("meeting_participants")
-            .insert([{"meeting_id": row["id"], "name": p.name, "speak_time_seconds": p.speak_time_seconds} for p in req.participants])
+            .insert([
+                {
+                    "meeting_id": row["id"],
+                    "name": p.name,
+                    "speak_time_seconds": p.speak_time_seconds,
+                    "member_id": p.member_id,
+                }
+                for p in req.participants
+            ])
             .execute()
         ).data
 
@@ -135,3 +147,38 @@ def delete_meeting(meeting_id: str, token: str) -> None:
     ).data:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="회의를 찾을 수 없습니다.")
     supabase_admin.table("meetings").delete().eq("id", meeting_id).execute()
+
+
+def process_audio(meeting_id: str, audio_bytes: bytes, filename: str, token: str) -> MeetingResponse:
+    """오디오 업로드 → Whisper 전사 → GPT 요약 → meetings 저장."""
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("meetings")
+        .select("id")
+        .eq("id", meeting_id)
+        .eq("owner_id", user.id)
+        .limit(1)
+        .execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="회의를 찾을 수 없습니다.")
+
+    try:
+        transcript = transcribe_audio(audio_bytes, filename)
+        summary = summarize_transcript(transcript)
+    except RateLimitError:
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            detail="OpenAI 사용량/결제 한도를 초과했습니다. OpenAI 계정의 크레딧을 확인해주세요.",
+        )
+    except (APIError, OpenAIError) as e:
+        raise HTTPException(
+            status.HTTP_502_BAD_GATEWAY,
+            detail=f"음성 인식 처리 중 오류가 발생했습니다: {str(e)[:100]}",
+        )
+
+    supabase_admin.table("meetings").update(
+        {"transcript": transcript, "summary": summary}
+    ).eq("id", meeting_id).execute()
+
+    return get_meeting(meeting_id, token)

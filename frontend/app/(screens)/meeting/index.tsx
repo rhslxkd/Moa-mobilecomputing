@@ -79,7 +79,7 @@ function MeetingHistoryItem({ meeting, onOption }: MeetingHistoryItemProps) {
           <TouchableOpacity
             style={styles.detailBtn}
             activeOpacity={0.7}
-            onPress={() => router.push("/(screens)/meeting/recording" as any)}
+            onPress={() => router.push(`/(screens)/meeting/${meeting.id}` as any)}
           >
             <Text style={[styles.detailText, { color: C.textMuted }]}>자세히 보기  &gt;</Text>
           </TouchableOpacity>

@@ -9,7 +9,7 @@
  *   - 실제 기기: "http://[내 맥 IP]:8000"  (예: "http://192.168.0.5:8000")
  */
 
-export const BASE_URL = "http://192.168.0.13:8000";
+export const BASE_URL = "http://192.168.0.6:8000";
 
 // ── 토큰 인메모리 저장소 ────────────────────────────────────────
 // 앱 재시작 시 초기화됨. 실제 운영 시 expo-secure-store 사용 권장.
@@ -173,6 +173,18 @@ export const AuthAPI = {
       { method: "POST", body: JSON.stringify(body) },
       resetToken,
     ),
+
+  /** 프로필(이름/소속) 수정 */
+  updateProfile: (body: { name: string; organization_name?: string; department?: string; student_id?: string }) =>
+    request<MessageResponse>("/auth/profile", { method: "PATCH", body: JSON.stringify(body) }),
+
+  /** 비밀번호 변경 (현재 비번 검증) */
+  changePassword: (body: { current_password: string; new_password: string }) =>
+    request<MessageResponse>("/auth/change-password", { method: "POST", body: JSON.stringify(body) }),
+
+  /** 아이디 변경 (비번 검증) */
+  changeUsername: (body: { new_username: string; password: string }) =>
+    request<MessageResponse>("/auth/change-username", { method: "POST", body: JSON.stringify(body) }),
 };
 
 // ── Todo API ───────────────────────────────────────────────
@@ -225,6 +237,7 @@ export interface MeetingParticipantDTO {
   id: string;
   name: string;
   speak_time_seconds: number;
+  member_id: string | null;
 }
 
 export interface MeetingDTO {
@@ -234,6 +247,7 @@ export interface MeetingDTO {
   project_name: string | null;
   duration_seconds: number;
   summary: string[];
+  transcript: string | null;
   participants: MeetingParticipantDTO[];
   created_at: string;
 }
@@ -250,7 +264,7 @@ export const MeetingAPI = {
     project_id?: string;
     duration_seconds: number;
     summary?: string[];
-    participants?: { name: string; speak_time_seconds: number }[];
+    participants?: { name: string; speak_time_seconds: number; member_id?: string }[];
   }) =>
     request<MeetingDTO>("/meetings", { method: "POST", body: JSON.stringify(body) }),
 
@@ -259,11 +273,37 @@ export const MeetingAPI = {
 
   delete: (id: string) =>
     request<void>(`/meetings/${id}`, { method: "DELETE" }),
+
+  /** 오디오 업로드 → Whisper 전사 + GPT 요약 */
+  uploadAudio: async (id: string, audioUri: string): Promise<MeetingDTO> => {
+    const form = new FormData();
+    const filename = audioUri.split("/").pop() || "audio.m4a";
+    const ext = filename.split(".").pop()?.toLowerCase() || "m4a";
+    form.append("file", {
+      uri: audioUri,
+      name: filename,
+      type: `audio/${ext === "m4a" ? "m4a" : ext}`,
+    } as any);
+
+    const res = await fetch(`${BASE_URL}/meetings/${id}/audio`, {
+      method: "POST",
+      headers: {
+        ...(TokenStore.get() ? { Authorization: `Bearer ${TokenStore.get()}` } : {}),
+      },
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data?.detail ?? "오디오 업로드에 실패했습니다.");
+    }
+    return data as MeetingDTO;
+  },
 };
 
 // ── Projects API ───────────────────────────────────────────
 export interface MemberDTO {
   id: string;
+  user_id: string | null;
   name: string;
   roles: string[];
 }
@@ -290,7 +330,7 @@ export interface ProjectCreateBody {
   status: "active" | "upcoming" | "completed";
   start_date: string;      // "YYYY.MM.DD"
   end_date: string;        // "YYYY.MM.DD"
-  members: { name: string; roles: string[] }[];
+  members: { id?: string; user_id?: string; name: string; roles: string[] }[];
 }
 
 export type ProjectUpdateBody = Partial<ProjectCreateBody>;
@@ -316,4 +356,275 @@ export const ProjectAPI = {
 
   delete: (id: string) =>
     request<void>(`/projects/${id}`, { method: "DELETE" }),
+};
+
+// ── Report API ─────────────────────────────────────────────
+export interface MemberReportDTO {
+  member_id: string;
+  name: string;
+  todos_done: number;
+  todos_total: number;
+  contribution: number;
+}
+
+export interface ReportDTO {
+  project_id: string;
+  project_name: string;
+  members: MemberReportDTO[];
+  total_todos: number;
+  done_todos: number;
+  completion_rate: number;
+  meeting_count: number;
+}
+
+export const ReportAPI = {
+  get: (projectId: string) =>
+    request<ReportDTO>(`/reports/${projectId}`, { method: "GET" }),
+};
+
+// ── Notification API ───────────────────────────────────────
+export interface NotificationDTO {
+  id: string;
+  type: "todo" | "mention" | "meeting" | "report";
+  title: string;
+  body: string;
+  project: string;
+  time: string;
+  read: boolean;
+}
+
+export const NotificationAPI = {
+  list: () =>
+    request<NotificationDTO[]>("/notifications", { method: "GET" }),
+};
+
+// ── Chat API ───────────────────────────────────────────────
+export interface ChatRoomDTO {
+  id: string;
+  type: "project" | "direct";
+  name: string;
+  project_id: string | null;
+  member_count: number;
+  last_message: string | null;
+  last_message_at: string | null;
+  unread_count: number;
+}
+
+export interface MessageDTO {
+  id: string;
+  room_id: string;
+  sender_id: string;
+  sender_name: string;
+  content: string;
+  created_at: string;
+  attachment_type: "image" | "file" | null;
+  attachment_name: string | null;
+  attachment_url: string | null;
+  attachment_mime: string | null;
+}
+
+export const ChatAPI = {
+  rooms: () =>
+    request<ChatRoomDTO[]>("/chat/rooms", { method: "GET" }),
+
+  createDirect: (friendUserId: string) =>
+    request<ChatRoomDTO>("/chat/rooms/direct", {
+      method: "POST",
+      body: JSON.stringify({ friend_user_id: friendUserId }),
+    }),
+
+  openProject: (projectId: string) =>
+    request<ChatRoomDTO>(`/chat/rooms/project/${projectId}`, { method: "POST" }),
+
+  messages: (roomId: string) =>
+    request<MessageDTO[]>(`/chat/rooms/${roomId}/messages`, { method: "GET" }),
+
+  send: (roomId: string, content: string) =>
+    request<MessageDTO>(`/chat/rooms/${roomId}/messages`, {
+      method: "POST",
+      body: JSON.stringify({ content }),
+    }),
+
+  markAsRead: (roomId: string) =>
+    request<void>(`/chat/rooms/${roomId}/read`, { method: "POST" }),
+
+  /** 파일/사진 전송 */
+  sendFile: async (roomId: string, uri: string, name: string, mime: string): Promise<MessageDTO> => {
+    const form = new FormData();
+    form.append("file", { uri, name, type: mime } as any);
+    const res = await fetch(`${BASE_URL}/chat/rooms/${roomId}/messages/file`, {
+      method: "POST",
+      headers: { ...(TokenStore.get() ? { Authorization: `Bearer ${TokenStore.get()}` } : {}) },
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.detail ?? "파일 전송에 실패했습니다.");
+    return data as MessageDTO;
+  },
+
+  getReadStatus: (roomId: string) =>
+    request<{ user_id: string; last_read_at: string | null }[]>(
+      `/chat/rooms/${roomId}/read-status`,
+      { method: "GET" },
+    ),
+};
+
+// ── Drive API ──────────────────────────────────────────────
+export interface DriveFolderDTO {
+  id: string;
+  name: string;
+  item_count: number;
+  project_id: string | null;
+  parent_id: string | null;
+  created_at: string;
+}
+
+export interface DriveFileDTO {
+  id: string;
+  name: string;
+  mime_type: string | null;
+  size_bytes: number | null;
+  project_id: string | null;
+  folder_id: string | null;
+  created_at: string;
+}
+
+export const DriveAPI = {
+  listFolders: (params: { projectId?: string; parentId?: string }) => {
+    const q = new URLSearchParams();
+    if (params.projectId) q.set("project_id", params.projectId);
+    if (params.parentId) q.set("parent_id", params.parentId);
+    const qs = q.toString();
+    return request<DriveFolderDTO[]>(`/drive/folders${qs ? `?${qs}` : ""}`, { method: "GET" });
+  },
+
+  createFolder: (body: { name: string; project_id?: string; parent_id?: string }) =>
+    request<DriveFolderDTO>("/drive/folders", { method: "POST", body: JSON.stringify(body) }),
+
+  deleteFolder: (id: string) =>
+    request<void>(`/drive/folders/${id}`, { method: "DELETE" }),
+
+  listFiles: (params: { projectId?: string; folderId?: string }) => {
+    const q = new URLSearchParams();
+    if (params.projectId) q.set("project_id", params.projectId);
+    if (params.folderId) q.set("folder_id", params.folderId);
+    const qs = q.toString();
+    return request<DriveFileDTO[]>(`/drive/files${qs ? `?${qs}` : ""}`, { method: "GET" });
+  },
+
+  /** 파일 업로드 (FormData) */
+  uploadFile: async (
+    fileUri: string,
+    fileName: string,
+    mimeType: string,
+    ctx: { projectId?: string; folderId?: string },
+  ): Promise<DriveFileDTO> => {
+    const form = new FormData();
+    form.append("file", { uri: fileUri, name: fileName, type: mimeType } as any);
+    if (ctx.projectId) form.append("project_id", ctx.projectId);
+    if (ctx.folderId) form.append("folder_id", ctx.folderId);
+
+    const res = await fetch(`${BASE_URL}/drive/files`, {
+      method: "POST",
+      headers: { ...(TokenStore.get() ? { Authorization: `Bearer ${TokenStore.get()}` } : {}) },
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.detail ?? "파일 업로드에 실패했습니다.");
+    return data as DriveFileDTO;
+  },
+
+  downloadUrl: (id: string) =>
+    request<{ url: string }>(`/drive/files/${id}/download`, { method: "GET" }),
+
+  deleteFile: (id: string) =>
+    request<void>(`/drive/files/${id}`, { method: "DELETE" }),
+};
+
+// ── Invitation API ─────────────────────────────────────────
+export interface InvitationDTO {
+  member_id: string;
+  project_id: string;
+  project_name: string;
+  invited_by: string;
+  created_at: string;
+}
+
+export const InvitationAPI = {
+  list: () =>
+    request<InvitationDTO[]>("/invitations", { method: "GET" }),
+
+  accept: (memberId: string, roles: string[]) =>
+    request<void>(`/invitations/${memberId}/accept`, {
+      method: "POST",
+      body: JSON.stringify({ roles }),
+    }),
+
+  decline: (memberId: string) =>
+    request<void>(`/invitations/${memberId}/decline`, { method: "DELETE" }),
+};
+
+// ── Friends API ────────────────────────────────────────────
+export interface FriendDTO {
+  friendship_id: string;
+  user_id: string;
+  username: string;
+  name: string;
+}
+
+export interface FriendRequestDTO {
+  friendship_id: string;
+  user_id: string;
+  username: string;
+  name: string;
+}
+
+export interface UserSearchDTO {
+  user_id: string;
+  username: string;
+  name: string;
+}
+
+export const FriendsAPI = {
+  list: () =>
+    request<FriendDTO[]>("/friends", { method: "GET" }),
+
+  requests: () =>
+    request<FriendRequestDTO[]>("/friends/requests", { method: "GET" }),
+
+  search: (username: string) =>
+    request<UserSearchDTO>(`/friends/search?username=${encodeURIComponent(username)}`, { method: "GET" }),
+
+  request: (username: string) =>
+    request<FriendRequestDTO>("/friends/request", {
+      method: "POST",
+      body: JSON.stringify({ username }),
+    }),
+
+  accept: (friendshipId: string) =>
+    request<void>(`/friends/${friendshipId}/accept`, { method: "POST" }),
+
+  remove: (friendshipId: string) =>
+    request<void>(`/friends/${friendshipId}`, { method: "DELETE" }),
+};
+
+// ── Member API ─────────────────────────────────────────────
+export const MemberAPI = {
+  list: (projectId: string) =>
+    request<MemberDTO[]>(`/projects/${projectId}/members`, { method: "GET" }),
+
+  add: (projectId: string, body: { name: string; roles: string[]; user_id?: string }) =>
+    request<MemberDTO>(`/projects/${projectId}/members`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  update: (memberId: string, body: { name?: string; roles?: string[] }) =>
+    request<MemberDTO>(`/members/${memberId}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  delete: (memberId: string) =>
+    request<void>(`/members/${memberId}`, { method: "DELETE" }),
 };

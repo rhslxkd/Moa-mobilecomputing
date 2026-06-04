@@ -18,6 +18,7 @@ import { ProjectAPI, ProjectDTO } from "@/services/api";
 // ── 타입 ──────────────────────────────────────────────────
 export interface Member {
   id: string;
+  userId?: string;   // 실제 auth.users id (친구 연결 시)
   name: string;
   roles: string[];
 }
@@ -64,7 +65,7 @@ function dtoToProject(dto: ProjectDTO): Project {
     endDate: dto.end_date,
     daysLeft: dto.days_left,
     memberCount: dto.member_count,
-    members: dto.members.map((m) => ({ id: m.id, name: m.name, roles: m.roles })),
+    members: dto.members.map((m) => ({ id: m.id, userId: m.user_id ?? undefined, name: m.name, roles: m.roles })),
     hasChatAlert: dto.has_chat_alert,
     hasTodoAlert: dto.has_todo_alert,
   };
@@ -99,7 +100,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
       status: project.status,
       start_date: project.startDate,
       end_date: project.endDate,
-      members: project.members.map((m) => ({ name: m.name, roles: m.roles })),
+      members: project.members.map((m) => ({ user_id: m.userId, name: m.name, roles: m.roles })),
     });
     const created = dtoToProject(dto);
     setProjects((prev) => [created, ...prev]);
@@ -115,7 +116,7 @@ export function ProjectProvider({ children }: { children: ReactNode }) {
         status: updated.status,
         start_date: updated.startDate,
         end_date: updated.endDate,
-        members: updated.members.map((m) => ({ name: m.name, roles: m.roles })),
+        members: updated.members.map((m) => ({ id: m.id, user_id: m.userId, name: m.name, roles: m.roles })),
       });
       const synced = dtoToProject(dto);
       setProjects((prev) => prev.map((p) => (p.id === synced.id ? synced : p)));

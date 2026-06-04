@@ -25,9 +25,19 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
+import {
+  useAudioRecorder,
+  AudioModule,
+  RecordingPresets,
+  setAudioModeAsync,
+} from "expo-audio";
+import { ActivityIndicator } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import { MeetingAPI } from "@/services/api";
+
+// 멤버 아바타 색상 팔레트
+const AVATAR_COLORS = ["#2563EB", "#7C3AED", "#0D9488", "#D97706", "#DC2626", "#0891B2"];
 
 // ── 파형 막대 애니메이션 ────────────────────
 function WaveBar({ delay }: { delay: number }) {
@@ -97,21 +107,44 @@ function ParticipantItem({ name, initial, speakTime, isSpeaking, color }: Partic
   );
 }
 
-const PARTICIPANTS = [
-  { name: "박지민", initial: "박", speakTime: "3분 12초", isSpeaking: true,  color: "#2563EB" },
-  { name: "김민준", initial: "김", speakTime: "1분 45초", isSpeaking: false, color: "#7C3AED" },
-  { name: "이서연", initial: "이", speakTime: "2분 08초", isSpeaking: false, color: "#0D9488" },
-  { name: "최준혁", initial: "최", speakTime: "0분 52초", isSpeaking: false, color: "#D97706" },
-];
-
 export default function MeetingRecordingScreen() {
   const C = useTheme();
   const router = useRouter();
   const { currentProject } = useProject();
 
-  // 녹음 타이머
+  // 실제 프로젝트 멤버 → 참여자
+  const participants = (currentProject?.members ?? []).map((m, i) => ({
+    name: m.name,
+    initial: m.name.charAt(0),
+    color: AVATAR_COLORS[i % AVATAR_COLORS.length],
+    memberId: m.id,
+  }));
+
+  // 오디오 레코더
+  const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
+
+  // 녹음 타이머 / 상태
   const [seconds, setSeconds] = useState(0);
   const [isRecording, setIsRecording] = useState(true);
+  const [processing, setProcessing] = useState(false);
+
+  // 마운트 시 권한 요청 + 녹음 시작
+  useEffect(() => {
+    (async () => {
+      try {
+        const status = await AudioModule.requestRecordingPermissionsAsync();
+        if (!status.granted) {
+          Alert.alert("마이크 권한 필요", "회의 녹음을 위해 마이크 권한을 허용해주세요.");
+          return;
+        }
+        await setAudioModeAsync({ allowsRecording: true, playsInSilentMode: true });
+        await audioRecorder.prepareToRecordAsync();
+        audioRecorder.record();
+      } catch (e) {
+        Alert.alert("녹음 오류", "녹음을 시작할 수 없습니다.");
+      }
+    })();
+  }, []);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -138,16 +171,41 @@ export default function MeetingRecordingScreen() {
           style: "destructive",
           onPress: async () => {
             setIsRecording(false);
+            setProcessing(true);
+
+            let audioUri: string | null = null;
+            try {
+              await audioRecorder.stop();
+              audioUri = audioRecorder.uri;
+            } catch {}
+
             const title = new Date().toLocaleDateString("ko-KR", {
               year: "numeric", month: "long", day: "numeric",
             }) + " 회의";
-            await MeetingAPI.create({
-              title,
-              project_id: currentProject?.id,
-              duration_seconds: seconds,
-              participants: PARTICIPANTS.map(p => ({ name: p.name, speak_time_seconds: 0 })),
-            }).catch(() => {});
-            router.back();
+
+            try {
+              const meeting = await MeetingAPI.create({
+                title,
+                project_id: currentProject?.id,
+                duration_seconds: seconds,
+                participants: participants.map(p => ({
+                  name: p.name,
+                  speak_time_seconds: 0,
+                  member_id: p.memberId,
+                })),
+              });
+
+              // 오디오 업로드 → Whisper 전사 + GPT 요약
+              if (audioUri) {
+                await MeetingAPI.uploadAudio(meeting.id, audioUri);
+              }
+              router.back();
+            } catch (e: any) {
+              Alert.alert("회의 저장", e?.message ?? "처리 중 오류가 발생했습니다. 회의는 저장되었어요.");
+              router.back();
+            } finally {
+              setProcessing(false);
+            }
           },
         },
       ]
@@ -163,7 +221,9 @@ export default function MeetingRecordingScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1, alignItems: "center" }}>
           <Text style={[styles.headerTitle, { color: C.text }]}>회의록 기록 중</Text>
-          <Text style={[styles.headerSub, { color: C.textMuted }]}>AI 챗봇 개발 프로젝트</Text>
+          <Text style={[styles.headerSub, { color: C.textMuted }]} numberOfLines={1}>
+            {currentProject?.name ?? "회의"}
+          </Text>
         </View>
         <View style={styles.backBtn} />
       </View>
@@ -192,18 +252,30 @@ export default function MeetingRecordingScreen() {
         </LinearGradient>
 
         {/* ── 참여자 목록 ── */}
-        <Text style={[styles.sectionTitle, { color: C.text }]}>참여자 발언 기록</Text>
+        <Text style={[styles.sectionTitle, { color: C.text }]}>참여자</Text>
 
-        {PARTICIPANTS.map((p) => (
-          <ParticipantItem key={p.name} {...p} />
-        ))}
+        {participants.length > 0 ? (
+          participants.map((p) => (
+            <ParticipantItem
+              key={p.memberId}
+              name={p.name}
+              initial={p.initial}
+              speakTime="기록 중…"
+              isSpeaking={false}
+              color={p.color}
+            />
+          ))
+        ) : (
+          <Text style={[styles.memoText, { color: C.textMuted, paddingHorizontal: 4 }]}>
+            등록된 팀원이 없어요. 프로젝트에 팀원을 추가해보세요.
+          </Text>
+        )}
 
-        {/* ── AI 메모 (실시간 인식) ── */}
+        {/* ── AI 요약 안내 ── */}
         <View style={[styles.memoCard, { backgroundColor: C.bgCard, borderColor: C.border }]}>
-          <Text style={[styles.memoTitle, { color: C.text }]}>🤖 실시간 AI 요약</Text>
+          <Text style={[styles.memoTitle, { color: C.text }]}>🤖 AI 회의록</Text>
           <Text style={[styles.memoText, { color: C.textSub }]}>
-            "이번 스프린트의 목표는 사용자 인증 모듈을 완성하는 것입니다. 
-            로그인 화면 UI는 박지민이 담당하고, 백엔드 API는 김민준이 담당하기로..."
+            회의가 끝나면 녹음된 음성을 자동으로 텍스트로 변환하고 핵심 내용을 요약해드려요.
           </Text>
         </View>
       </ScrollView>
@@ -214,11 +286,27 @@ export default function MeetingRecordingScreen() {
           onPress={handleStop}
           activeOpacity={0.85}
           style={styles.stopBtn}
+          disabled={processing}
         >
           <View style={styles.stopIcon} />
           <Text style={styles.stopBtnText}>회의 종료</Text>
         </TouchableOpacity>
       </View>
+
+      {/* 처리 중 오버레이 */}
+      {processing && (
+        <View style={styles.processingOverlay}>
+          <View style={[styles.processingBox, { backgroundColor: C.bgCard }]}>
+            <ActivityIndicator size="large" color={C.primary} />
+            <Text style={[styles.processingText, { color: C.text }]}>
+              AI가 회의록을 정리하고 있어요…
+            </Text>
+            <Text style={[styles.processingSub, { color: C.textMuted }]}>
+              음성을 텍스트로 변환하고 요약하는 중입니다.
+            </Text>
+          </View>
+        </View>
+      )}
     </SafeAreaView>
   );
 }
@@ -364,4 +452,23 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "700",
   },
+
+  // 처리 중 오버레이
+  processingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: "rgba(0,0,0,0.45)",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 40,
+  },
+  processingBox: {
+    width: "100%",
+    borderRadius: 20,
+    paddingVertical: 32,
+    paddingHorizontal: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  processingText: { fontSize: 16, fontWeight: "700", marginTop: 4 },
+  processingSub: { fontSize: 13, textAlign: "center", lineHeight: 19 },
 });

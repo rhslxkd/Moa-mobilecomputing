@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,11 +12,12 @@ import {
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import { SvgXml } from "react-native-svg";
 import { BlurView } from "expo-blur";
 import { useTheme, useIsDark } from "../../hooks/useTheme";
 import { useProject, type Project } from "../../contexts/ProjectContext";
+import { ChatAPI } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Theme } from "../../constants/theme";
 import AlarmModal from "../modals/AlarmModal";
@@ -97,9 +98,12 @@ export default function DashboardScreen() {
   const { projects, loading, loadProjects, currentProject, setCurrentProject } = useProject();
   const { user } = useAuth();
 
-  useEffect(() => {
-    loadProjects();
-  }, []);
+  // 홈 탭 포커스 시마다 프로젝트 갱신 (초대 수락 후 즉시 반영)
+  useFocusEffect(
+    useCallback(() => {
+      loadProjects();
+    }, [loadProjects])
+  );
   const displayName = user?.fullName || user?.username || "";
   const s = makeStyles(C, isDark, insets);
   const [alarmOpen, setAlarmOpen] = useState(false);
@@ -191,11 +195,14 @@ export default function DashboardScreen() {
               }}
               onFolder={() => {
                 setCurrentProject(project);
-                router.push("/(screens)/drive" as any);
+                router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: project.id, folderName: project.name, isPersonal: "0" } } as any);
               }}
-              onChat={() => {
+              onChat={async () => {
                 setCurrentProject(project);
-                router.push(`/(screens)/chat/${project.id}`);
+                try {
+                  const room = await ChatAPI.openProject(project.id);
+                  router.push({ pathname: `/(screens)/chat/${room.id}`, params: { name: room.name } } as any);
+                } catch {}
               }}
               onTodo={() => {
                 setCurrentProject(project);

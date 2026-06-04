@@ -5,12 +5,14 @@ from pydantic import BaseModel, Field
 class ParticipantCreate(BaseModel):
     name: str
     speak_time_seconds: int = 0
+    member_id: Optional[str] = None
 
 
 class ParticipantResponse(BaseModel):
     id: str
     name: str
     speak_time_seconds: int
+    member_id: Optional[str]
 
 
 class MeetingCreate(BaseModel):
@@ -28,5 +30,6 @@ class MeetingResponse(BaseModel):
     project_name: Optional[str]
     duration_seconds: int
     summary: list[str]
+    transcript: Optional[str]
     participants: list[ParticipantResponse]
     created_at: str

@@ -129,3 +129,21 @@ class UserProfileResponse(BaseModel):
     department: Optional[str] = None
     student_id: Optional[str] = None
     onboarding_completed: bool
+
+
+# ── 프로필/계정 수정 ───────────────────────────────────────
+class UpdateProfileRequest(BaseModel):
+    name: str
+    organization_name: Optional[str] = None
+    department: Optional[str] = None
+    student_id: Optional[str] = None
+
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str
+
+
+class ChangeUsernameRequest(BaseModel):
+    new_username: str
+    password: str

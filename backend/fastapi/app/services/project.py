@@ -41,7 +41,7 @@ def _build(proj: dict, members: list[dict]) -> ProjectResponse:
         end_date=_iso_to_dot(proj["end_date"]),
         days_left=_days_left(proj["end_date"]),
         member_count=len(members),
-        members=[MemberResponse(id=m["id"], name=m["name"], roles=m["roles"]) for m in members],
+        members=[MemberResponse(id=m["id"], user_id=m.get("user_id"), name=m["name"], roles=m["roles"]) for m in members],
         has_chat_alert=proj.get("has_chat_alert", False),
         has_todo_alert=proj.get("has_todo_alert", False),
     )
@@ -60,14 +60,41 @@ def _fetch_members(project_id: str) -> list[dict]:
 
 def list_projects(token: str) -> list[ProjectResponse]:
     user = _get_user(token)
-    rows = (
+
+    # 내가 owner인 프로젝트
+    owned = (
         supabase_admin.table("projects")
         .select("*")
         .eq("owner_id", user.id)
         .order("created_at", desc=True)
         .execute()
     ).data
-    return [_build(p, _fetch_members(p["id"])) for p in rows]
+
+    # 내가 수락한 멤버인 프로젝트 (pending 제외)
+    member_rows = (
+        supabase_admin.table("project_members")
+        .select("project_id")
+        .eq("user_id", user.id)
+        .eq("status", "accepted")
+        .execute()
+    ).data
+    member_project_ids = {r["project_id"] for r in member_rows}
+    # owner인 것은 이미 포함돼 있으므로 중복 제거
+    owned_ids = {p["id"] for p in owned}
+    extra_ids = member_project_ids - owned_ids
+
+    extra: list[dict] = []
+    if extra_ids:
+        extra = (
+            supabase_admin.table("projects")
+            .select("*")
+            .in_("id", list(extra_ids))
+            .order("created_at", desc=True)
+            .execute()
+        ).data
+
+    all_projects = owned + extra
+    return [_build(p, _fetch_members(p["id"])) for p in all_projects]
 
 
 # ── 생성 ──────────────────────────────────────────────────
@@ -90,7 +117,12 @@ def create_project(req: ProjectCreate, token: str) -> ProjectResponse:
 
     members = (
         supabase_admin.table("project_members")
-        .insert([{"project_id": proj["id"], "name": m.name, "roles": m.roles} for m in req.members])
+        .insert([{
+            "project_id": proj["id"],
+            "name": m.name,
+            "roles": m.roles,
+            **({"user_id": m.user_id, "status": "pending"} if getattr(m, "user_id", None) else {"status": "accepted"}),
+        } for m in req.members])
         .execute()
     ).data
     return _build(proj, members)
@@ -138,10 +170,39 @@ def update_project(project_id: str, req: ProjectUpdate, token: str) -> ProjectRe
         supabase_admin.table("projects").update(patch).eq("id", project_id).execute()
 
     if req.members is not None:
-        supabase_admin.table("project_members").delete().eq("project_id", project_id).execute()
-        supabase_admin.table("project_members").insert(
-            [{"project_id": project_id, "name": m.name, "roles": m.roles} for m in req.members]
-        ).execute()
+        # id 기반 diff 처리 — 기존 멤버 id를 유지해서 todo 담당자/회의 참여자 연결 보존
+        existing = (
+            supabase_admin.table("project_members")
+            .select("id")
+            .eq("project_id", project_id)
+            .execute()
+        ).data
+        existing_ids = {e["id"] for e in existing}
+        incoming_ids = {m.id for m in req.members if getattr(m, "id", None)}
+
+        # 1) 빠진 멤버 삭제 (todos/meeting_participants는 ON DELETE SET NULL)
+        for mid in existing_ids - incoming_ids:
+            supabase_admin.table("project_members").delete().eq("id", mid).execute()
+
+        # 2) 기존 멤버는 수정, 신규 멤버는 추가
+        for m in req.members:
+            mid = getattr(m, "id", None)
+            uid = getattr(m, "user_id", None)
+            if mid and mid in existing_ids:
+                patch = {"name": m.name, "roles": m.roles}
+                if uid:
+                    patch["user_id"] = uid
+                supabase_admin.table("project_members").update(patch).eq("id", mid).execute()
+            else:
+                row = {
+                    "project_id": project_id,
+                    "name": m.name,
+                    "roles": m.roles,
+                    "status": "pending" if uid else "accepted",
+                }
+                if uid:
+                    row["user_id"] = uid
+                supabase_admin.table("project_members").insert(row).execute()
 
     return get_project(project_id, token)
 

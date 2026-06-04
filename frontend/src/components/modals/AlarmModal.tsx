@@ -12,7 +12,7 @@
  *   <AlarmModal isOpen={isOpen} onClose={onClose} />
  */
 
-import React from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -22,8 +22,12 @@ import {
   ScrollView,
   Pressable,
   Platform,
+  Alert,
 } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { NotificationAPI, InvitationAPI } from "@/services/api";
+
+const PRESET_ROLES = ["팀장", "개발자", "디자이너", "기획자", "QA", "데이터 분석"];
 
 export interface AlarmItem {
   id: string;
@@ -34,45 +38,6 @@ export interface AlarmItem {
   time: string;
   read: boolean;
 }
-
-const MOCK_ALARMS: AlarmItem[] = [
-  {
-    id: "1",
-    type: "meeting",
-    title: "회의 시작 알림",
-    body: "AI 챗봇 개발 프로젝트 회의가 10분 후 시작됩니다.",
-    project: "AI 챗봇 개발",
-    time: "10분 전",
-    read: false,
-  },
-  {
-    id: "2",
-    type: "todo",
-    title: "할일 마감 임박",
-    body: "로그인 UI 디자인 검토가 오늘까지 마감입니다.",
-    project: "모바일 앱 디자인",
-    time: "1시간 전",
-    read: false,
-  },
-  {
-    id: "3",
-    type: "mention",
-    title: "채팅에서 멘션됐어요",
-    body: "김민준: @박지민 프론트엔드 API 연동 확인 부탁드려요!",
-    project: "AI 챗봇 개발",
-    time: "2시간 전",
-    read: true,
-  },
-  {
-    id: "4",
-    type: "report",
-    title: "기여도 리포트 업데이트",
-    body: "이번 주 기여도 분석 결과가 업데이트됐습니다.",
-    project: "AI 챗봇 개발",
-    time: "어제",
-    read: true,
-  },
-];
 
 const TYPE_INFO = {
   todo:    { emoji: "✅", color: "#2563EB" },
@@ -88,8 +53,55 @@ interface AlarmModalProps {
 
 export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
   const C = useTheme();
+  const [alarms, setAlarms] = useState<AlarmItem[]>([]);
+  // 역할 선택 모달
+  const [roleTarget, setRoleTarget] = useState<{ memberId: string; projectName: string } | null>(null);
+  const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
-  const unreadCount = MOCK_ALARMS.filter((a) => !a.read).length;
+  const loadAlarms = () => {
+    NotificationAPI.list()
+      .then((list) => setAlarms(list as AlarmItem[]))
+      .catch(() => {});
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    loadAlarms();
+  }, [isOpen]);
+
+  // 초대 ID 추출 (id: "invite-{member_id}" 형식)
+  const getMemberId = (alarmId: string) => alarmId.replace("invite-", "");
+
+  const handleAcceptInvite = (alarm: AlarmItem) => {
+    setRoleTarget({ memberId: getMemberId(alarm.id), projectName: alarm.project });
+    setSelectedRoles([]);
+  };
+
+  const handleDeclineInvite = (alarm: AlarmItem) => {
+    Alert.alert("초대 거절", `'${alarm.project}' 초대를 거절할까요?`, [
+      { text: "취소", style: "cancel" },
+      {
+        text: "거절", style: "destructive",
+        onPress: async () => {
+          await InvitationAPI.decline(getMemberId(alarm.id)).catch(() => {});
+          loadAlarms();
+        },
+      },
+    ]);
+  };
+
+  const handleConfirmRole = async () => {
+    if (!roleTarget || selectedRoles.length === 0) {
+      Alert.alert("역할 선택", "역할을 최소 1개 선택해주세요.");
+      return;
+    }
+    await InvitationAPI.accept(roleTarget.memberId, selectedRoles).catch(() => {});
+    setRoleTarget(null);
+    loadAlarms();
+    Alert.alert("수락 완료", `'${roleTarget.projectName}' 프로젝트 팀원이 됐어요!`);
+  };
+
+  const unreadCount = alarms.filter((a) => !a.read).length;
 
   return (
     <Modal
@@ -128,7 +140,12 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
           >
-            {MOCK_ALARMS.map((alarm) => {
+            {alarms.length === 0 && (
+              <Text style={{ color: C.textMuted, textAlign: "center", paddingVertical: 32, fontSize: 14 }}>
+                새로운 알림이 없어요.
+              </Text>
+            )}
+            {alarms.map((alarm) => {
               const info = TYPE_INFO[alarm.type];
               return (
                 <TouchableOpacity
@@ -166,6 +183,25 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
                         {alarm.time}
                       </Text>
                     </View>
+                    {/* 프로젝트 초대 수락/거절 버튼 */}
+                    {alarm.id.startsWith("invite-") && (
+                      <View style={styles.inviteButtons}>
+                        <TouchableOpacity
+                          onPress={() => handleAcceptInvite(alarm)}
+                          style={[styles.inviteBtn, { backgroundColor: C.primary }]}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.inviteBtnText}>수락</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeclineInvite(alarm)}
+                          style={[styles.inviteBtn, { borderWidth: 1, borderColor: C.border }]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.inviteBtnText, { color: C.textMuted }]}>거절</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
                   </View>
                 </TouchableOpacity>
               );
@@ -173,6 +209,45 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
           </ScrollView>
         </Pressable>
       </Pressable>
+
+      {/* 역할 선택 모달 */}
+      <Modal visible={!!roleTarget} transparent animationType="fade" onRequestClose={() => setRoleTarget(null)}>
+        <Pressable style={styles.roleBackdrop} onPress={() => setRoleTarget(null)}>
+          <Pressable style={[styles.roleSheet, { backgroundColor: C.bgCard }]}>
+            <Text style={[styles.roleTitle, { color: C.text }]}>역할을 선택해주세요</Text>
+            <Text style={[styles.roleSub, { color: C.textMuted }]}>{roleTarget?.projectName}</Text>
+            <View style={styles.roleChips}>
+              {PRESET_ROLES.map((role) => {
+                const active = selectedRoles.includes(role);
+                return (
+                  <TouchableOpacity
+                    key={role}
+                    onPress={() => setSelectedRoles(prev =>
+                      prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]
+                    )}
+                    style={[styles.roleChip, active
+                      ? { backgroundColor: C.primary, borderColor: C.primary }
+                      : { borderColor: C.border }
+                    ]}
+                    activeOpacity={0.7}
+                  >
+                    <Text style={[styles.roleChipText, { color: active ? "#fff" : C.text }]}>{role}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            <TouchableOpacity
+              onPress={handleConfirmRole}
+              style={[styles.roleConfirmBtn, { backgroundColor: selectedRoles.length ? C.primary : C.border }]}
+              activeOpacity={0.85}
+            >
+              <Text style={styles.roleConfirmText}>
+                {selectedRoles.length ? `${selectedRoles.join(", ")}으로 수락` : "역할을 선택하세요"}
+              </Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </Modal>
   );
 }
@@ -245,4 +320,20 @@ const styles = StyleSheet.create({
   alarmMeta: { flexDirection: "row", gap: 8, alignItems: "center" },
   alarmProject: { fontSize: 12, fontWeight: "500" },
   alarmTime: { fontSize: 12 },
+
+  // 초대 버튼
+  inviteButtons: { flexDirection: "row", gap: 8, marginTop: 6 },
+  inviteBtn: { paddingHorizontal: 16, paddingVertical: 7, borderRadius: 8 },
+  inviteBtnText: { fontSize: 13, fontWeight: "700", color: "#fff" },
+
+  // 역할 선택 모달
+  roleBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", alignItems: "center", padding: 28 },
+  roleSheet: { width: "100%", borderRadius: 20, padding: 24, gap: 12 },
+  roleTitle: { fontSize: 17, fontWeight: "700" },
+  roleSub: { fontSize: 13 },
+  roleChips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginVertical: 4 },
+  roleChip: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 20, borderWidth: 1 },
+  roleChipText: { fontSize: 14, fontWeight: "600" },
+  roleConfirmBtn: { borderRadius: 12, paddingVertical: 14, alignItems: "center", marginTop: 4 },
+  roleConfirmText: { color: "#fff", fontSize: 15, fontWeight: "700" },
 });

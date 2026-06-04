@@ -16,6 +16,9 @@ from app.schemas.auth import (
     MessageResponse,
     UsernameResponse,
     UserProfileResponse,
+    UpdateProfileRequest,
+    ChangePasswordRequest,
+    ChangeUsernameRequest,
 )
 import app.services.auth as auth_service
 
@@ -118,3 +121,21 @@ def reset_password(req: ResetPasswordRequest, token: str = Depends(bearer_token)
     """find-password/verify 에서 받은 토큰으로 비밀번호 변경."""
     auth_service.reset_password(req, token)
     return {"message": "비밀번호가 재설정되었습니다."}
+
+
+@router.patch("/profile", response_model=MessageResponse)
+def update_profile(req: UpdateProfileRequest, token: str = Depends(bearer_token)):
+    auth_service.update_profile(req, token)
+    return {"message": "프로필이 수정되었습니다."}
+
+
+@router.post("/change-password", response_model=MessageResponse)
+def change_password(req: ChangePasswordRequest, token: str = Depends(bearer_token)):
+    auth_service.change_password(req, token)
+    return {"message": "비밀번호가 변경되었습니다."}
+
+
+@router.post("/change-username", response_model=MessageResponse)
+def change_username(req: ChangeUsernameRequest, token: str = Depends(bearer_token)):
+    auth_service.change_username(req, token)
+    return {"message": "아이디가 변경되었습니다."}

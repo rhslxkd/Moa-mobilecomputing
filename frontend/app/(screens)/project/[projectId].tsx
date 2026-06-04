@@ -26,6 +26,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
+import { ChatAPI } from "@/services/api";
 import Icon from "@/components/common/Icon";
 import MoaLogo from "@/components/common/MoaLogo";
 import ProjectEditSheet from "@/components/modals/ProjectEditSheet";
@@ -100,12 +101,18 @@ export default function ProjectDetailScreen() {
             <TouchableOpacity
               key={tab.key}
               style={styles.tabItem}
-              onPress={() => {
+              onPress={async () => {
                 if (tab.key === "files") {
-                  router.push("/(screens)/drive" as any);
+                  // 프로젝트 폴더로 진입 (project_id 컨텍스트)
+                  router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: project.id, folderName: project.name, isPersonal: "0" } } as any);
                 } else if (tab.key === "chat") {
                   setCurrentProject(project);
-                  router.push(`/(screens)/chat/${project.id}` as any);
+                  try {
+                    const room = await ChatAPI.openProject(project.id);
+                    router.push({ pathname: `/(screens)/chat/${room.id}`, params: { name: room.name } } as any);
+                  } catch {}
+                } else if (tab.key === "todo") {
+                  router.push(`/(screens)/todo/${project.id}` as any);
                 } else {
                   setActiveTab(tab.key);
                 }
@@ -153,9 +160,6 @@ export default function ProjectDetailScreen() {
             }}
           />
         )}
-        {activeTab === "chat" && <PlaceholderTab icon="chat" label="채팅" C={C} />}
-        {activeTab === "todo" && <TodoTab project={project} accentColor={accentColor} C={C} />}
-        {activeTab === "files" && <PlaceholderTab icon="folder" label="파일" C={C} />}
       </ScrollView>
 
       {/* 프로젝트 수정 시트 */}

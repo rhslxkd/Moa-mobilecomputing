@@ -24,12 +24,15 @@ def _parse_dot_date(s: str) -> date:
 # ── 팀원 ──────────────────────────────────────────────────
 
 class MemberCreate(BaseModel):
+    id: Optional[str] = None        # 수정 시 기존 멤버 id
+    user_id: Optional[str] = None   # 실제 auth.users id (친구 연결 시)
     name: str = Field(..., max_length=10)
     roles: list[str] = Field(..., min_length=1)
 
 
 class MemberResponse(BaseModel):
     id: str
+    user_id: Optional[str]
     name: str
     roles: list[str]
 
