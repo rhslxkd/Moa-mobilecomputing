@@ -551,6 +551,7 @@ export default function AddTodoScreen() {
   const [description, setDescription] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [difficulty, setDifficulty] = useState<number>(2); // 1=하 2=중 3=상
 
   // 선택된 프로젝트의 멤버 목록
   const selectedProject = projects.find(p => p.id === selectedProjectId);
@@ -589,6 +590,7 @@ export default function AddTodoScreen() {
       assignee_member_id: tab === "project" ? selectedMemberId ?? undefined : undefined,
       due_date: endDate.toISOString().split("T")[0],
       start_date: startDate.toISOString().split("T")[0],
+      difficulty,
     });
     router.back();
   };
@@ -722,6 +724,37 @@ export default function AddTodoScreen() {
               onChangeText={setDescription}
               multiline
             />
+          </View>
+
+          {/* 난이도 */}
+          <View style={[s.assigneeSection, { borderBottomColor: C.border }]}>
+            <Text style={[s.assigneeLabel, { color: C.textMuted }]}>난이도</Text>
+            <View style={[s.assigneeRow, { flexDirection: "row" }]}>
+              {[
+                { v: 1, label: "하" },
+                { v: 2, label: "중" },
+                { v: 3, label: "상" },
+              ].map((d) => {
+                const active = difficulty === d.v;
+                return (
+                  <TouchableOpacity
+                    key={d.v}
+                    activeOpacity={0.7}
+                    onPress={() => setDifficulty(d.v)}
+                    style={[
+                      s.assigneeChip,
+                      { borderColor: C.border },
+                      active && { backgroundColor: C.primary, borderColor: C.primary },
+                    ]}
+                  >
+                    <Text style={[
+                      s.assigneeChipText,
+                      { color: active ? "#fff" : C.text },
+                    ]}>{d.label}</Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
           </View>
 
           {/* 시작일 */}

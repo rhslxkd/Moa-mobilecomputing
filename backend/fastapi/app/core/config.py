@@ -11,6 +11,12 @@ class Settings(BaseSettings):
 
     openai_api_key: str
 
+    daglo_api_key: str = ""
+
+    # AI 호환 API 전환용 (비우면 OpenAI 기본)
+    ai_base_url: str = ""
+    ai_model: str = "gpt-4o-mini"
+
     class Config:
         env_file = ".env"
 

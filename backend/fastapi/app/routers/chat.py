@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, UploadFile, File
 from app.schemas.chat import (
     ChatRoomResponse,
     MessageResponse,
+    RoomMemberResponse,
     DirectRoomBody,
     MessageBody,
 )
@@ -24,6 +25,11 @@ def create_direct(req: DirectRoomBody, token: str = Depends(bearer_token)):
 @router.post("/rooms/project/{project_id}", response_model=ChatRoomResponse)
 def open_project(project_id: str, token: str = Depends(bearer_token)):
     return chat_svc.get_or_create_project_room(project_id, token)
+
+
+@router.get("/rooms/{room_id}/members", response_model=list[RoomMemberResponse])
+def list_room_members(room_id: str, token: str = Depends(bearer_token)):
+    return chat_svc.list_room_members(room_id, token)
 
 
 @router.get("/rooms/{room_id}/messages", response_model=list[MessageResponse])

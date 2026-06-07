@@ -26,6 +26,12 @@ class MessageResponse(BaseModel):
     attachment_mime: Optional[str] = None
 
 
+class RoomMemberResponse(BaseModel):
+    user_id: str
+    name: str
+    is_me: bool
+
+
 class DirectRoomBody(BaseModel):
     friend_user_id: str
 

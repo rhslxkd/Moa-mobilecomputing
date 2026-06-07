@@ -26,6 +26,7 @@ def _build(row: dict, project_name: str | None = None) -> TodoResponse:
         done=row["done"],
         due_date=row.get("due_date"),
         start_date=row.get("start_date"),
+        difficulty=row.get("difficulty", 2),
     )
 
 
@@ -82,6 +83,7 @@ def create_todo(req: TodoCreate, token: str) -> TodoResponse:
         "owner_id": user.id,
         "title": req.title,
         "done": False,
+        "difficulty": req.difficulty,
     }
     if req.description is not None:
         payload["description"] = req.description
@@ -143,6 +145,8 @@ def update_todo(todo_id: str, req: TodoUpdate, token: str) -> TodoResponse:
         patch["start_date"] = req.start_date
     if req.done is not None:
         patch["done"] = req.done
+    if req.difficulty is not None:
+        patch["difficulty"] = req.difficulty
 
     if patch:
         supabase_admin.table("todos").update(patch).eq("id", todo_id).execute()

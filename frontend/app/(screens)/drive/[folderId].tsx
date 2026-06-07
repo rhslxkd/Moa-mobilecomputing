@@ -273,12 +273,7 @@ export default function FolderDetailScreen() {
           <Text style={s.headerTitle} numberOfLines={1}>폴더 · {folderName ?? "폴더"}</Text>
         </View>
         <View style={s.headerRight}>
-          <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => Alert.alert("다운로드", "준비 중입니다.")}>
-            <DownloadIcon color="#333333" />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.iconBtn} activeOpacity={0.7}>
-            <Icon name="option" size={22} color="#333333" />
-          </TouchableOpacity>
+          <View style={s.iconBtn} />
         </View>
       </View>
 

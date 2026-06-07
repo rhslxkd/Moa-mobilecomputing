@@ -27,8 +27,10 @@ interface MemberReport {
   name: string;
   initial: string;
   contribution: number;
+  score: number;
   todosDone: number;
   todosTotal: number;
+  aiComment: string | null;
 }
 
 // ── 다운로드 아이콘 ────────────────────────
@@ -59,9 +61,9 @@ function ContribBar({ member, accent, rank }: { member: MemberReport; accent: st
       </View>
       <View style={s.contribRight}>
         <View style={[s.barTrack, { backgroundColor: C.bgMuted }]}>
-          <View style={[s.barFill, { width: `${member.contribution}%` as any, backgroundColor: isFirst ? accent : C.border }]} />
+          <View style={[s.barFill, { width: `${member.score}%` as any, backgroundColor: isFirst ? accent : C.border }]} />
         </View>
-        <Text style={[s.contribPct, { color: isFirst ? accent : C.textMuted }]}>{member.contribution}%</Text>
+        <Text style={[s.contribPct, { color: isFirst ? accent : C.textMuted }]}>{member.score}점</Text>
       </View>
     </View>
   );
@@ -79,6 +81,7 @@ export default function ReportScreen() {
 
   const [members, setMembers] = useState<MemberReport[]>([]);
   const [meetingCount, setMeetingCount] = useState(0);
+  const [overallComment, setOverallComment] = useState<string | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -88,18 +91,21 @@ export default function ReportScreen() {
           name: m.name,
           initial: m.name.charAt(0),
           contribution: m.contribution,
+          score: m.score,
           todosDone: m.todos_done,
           todosTotal: m.todos_total,
+          aiComment: m.ai_comment,
         })));
         setMeetingCount(r.meeting_count);
+        setOverallComment(r.overall_comment);
       }).catch(() => {});
     }, [projectId])
   );
 
-  // 통계 계산
-  const myScore = members[0]?.contribution ?? 0;
+  // 통계 계산 (점수 기준)
+  const myScore = members[0]?.score ?? 0;
   const teamAvg = members.length
-    ? Math.round(members.reduce((s, m) => s + m.contribution, 0) / members.length)
+    ? Math.round(members.reduce((s, m) => s + m.score, 0) / members.length)
     : 0;
   const myRank = 1;
 
@@ -168,6 +174,34 @@ export default function ReportScreen() {
             ))}
           </View>
         </View>
+
+        {/* AI 종합 평가 */}
+        {overallComment && (
+          <View style={[s.contentCard, { backgroundColor: C.primary + "08", borderColor: C.primary + "30", marginTop: 14 }]}>
+            <Text style={[s.contentTitle, { color: C.primary }]}>🤖 AI 종합 평가</Text>
+            <Text style={[s.aiOverall, { color: C.textSub }]}>{overallComment}</Text>
+          </View>
+        )}
+
+        {/* 멤버별 AI 코멘트 */}
+        {members.some((m) => m.aiComment) && (
+          <View style={[s.contentCard, { backgroundColor: C.bgCard, borderColor: C.border, marginTop: 14 }]}>
+            <Text style={[s.contentTitle, { color: C.text }]}>💬 팀원별 AI 코멘트</Text>
+            <View style={{ gap: 12 }}>
+              {members.filter((m) => m.aiComment).map((m) => (
+                <View key={m.name} style={s.aiCommentRow}>
+                  <View style={[s.memberAvatar, { backgroundColor: project.color + "20" }]}>
+                    <Text style={[s.memberInitial, { color: project.color }]}>{m.initial}</Text>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.memberName, { color: C.text }]}>{m.name}</Text>
+                    <Text style={[s.aiCommentText, { color: C.textSub }]}>{m.aiComment}</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+          </View>
+        )}
       </ScrollView>
 
       <OptionSheet
@@ -263,5 +297,9 @@ const s = StyleSheet.create({
   contribRight: { flex: 1, flexDirection: "row", alignItems: "center", gap: 8 },
   barTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 4 },
-  contribPct: { fontSize: 12, fontWeight: "700", width: 36, textAlign: "right" },
+  contribPct: { fontSize: 12, fontWeight: "700", width: 40, textAlign: "right" },
+
+  aiOverall: { fontSize: 14, lineHeight: 22 },
+  aiCommentRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },
+  aiCommentText: { fontSize: 13, lineHeight: 20, marginTop: 3 },
 });

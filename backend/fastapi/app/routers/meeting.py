@@ -1,6 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File
-from app.schemas.meeting import MeetingCreate, MeetingResponse
+from app.schemas.meeting import MeetingCreate, MeetingResponse, SpeakerMappingRequest
 from app.routers.auth import bearer_token
 import app.services.meeting as meeting_svc
 
@@ -38,3 +38,12 @@ async def upload_audio(
 ):
     audio_bytes = await file.read()
     return meeting_svc.process_audio(meeting_id, audio_bytes, file.filename or "audio.m4a", token)
+
+
+@router.post("/{meeting_id}/speaker-mapping", response_model=MeetingResponse)
+def speaker_mapping(
+    meeting_id: str,
+    req: SpeakerMappingRequest,
+    token: str = Depends(bearer_token),
+):
+    return meeting_svc.set_speaker_mapping(meeting_id, req.mappings, token)

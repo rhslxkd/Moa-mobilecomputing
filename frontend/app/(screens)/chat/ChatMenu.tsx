@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,27 +6,35 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
-  Image,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import Icon from "@/components/common/Icon";
+import { ChatAPI } from "@/services/api";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
-// ── Mock Data ─────────────────────────────
-const PHOTOS = [1, 2, 3, 4, 5, 6];
-const MEMBERS = [
-  { id: 'm1', name: '손범관', initial: '나', me: true },
-  { id: 'm2', name: '김혜민', initial: '혜민' },
-  { id: 'm3', name: '장현수', initial: '현수' },
-];
+interface RoomMember { id: string; name: string; initial: string; me: boolean }
 
 export default function ChatMenuScreen() {
   const C = useTheme();
   const router = useRouter();
   const insets = useSafeAreaInsets();
+  const params = useLocalSearchParams<{ projectId: string; name?: string }>();
+  const roomId = params.projectId;
+  const roomName = params.name ?? "채팅방";
+
+  const [members, setMembers] = useState<RoomMember[]>([]);
+
+  useEffect(() => {
+    if (!roomId) return;
+    ChatAPI.roomMembers(roomId).then((ms) =>
+      setMembers(ms.map((m) => ({
+        id: m.user_id, name: m.name, initial: m.name.charAt(0), me: m.is_me,
+      })))
+    ).catch(() => {});
+  }, [roomId]);
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#F9F9F9' }} edges={['top']}>
@@ -51,7 +59,7 @@ export default function ChatMenuScreen() {
             <View style={[styles.avatarBox, { backgroundColor: '#D1FAE5' }]}><Icon name="profile" size={20} color="#34D399" /></View>
             <View style={[styles.avatarBox, { backgroundColor: '#Fef3c7' }]}><Icon name="profile" size={20} color="#fbbf24" /></View>
           </View>
-          <Text style={styles.roomName}>모바일 앱 디자인</Text>
+          <Text style={styles.roomName}>{roomName}</Text>
         </View>
 
         {/* 미디어 카드 */}
@@ -60,27 +68,22 @@ export default function ChatMenuScreen() {
             style={styles.cardItem}
             onPress={() => router.push({
               pathname: '/(screens)/chat/ChatArchive',
-              params: { projectId: 'projectId', initialTab: 'media' }
+              params: { projectId: roomId, initialTab: 'media' }
             })}
           >
             <View style={styles.itemTitleRow}>
               <Icon name="photo" size={18} color="#2ECC71" />
               <Text style={styles.itemTitle}>사진/동영상</Text>
             </View>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.thumbRow}>
-              {PHOTOS.map(p => (
-                <View key={p} style={styles.thumb} />
-              ))}
-            </ScrollView>
           </TouchableOpacity>
 
           <MenuListItem icon="file" label="파일" color="#7F8C8D" onPress={() => router.push({
             pathname: '/(screens)/chat/ChatArchive',
-            params: { projectId: 'projectId', initialTab: 'file' }
+            params: { projectId: roomId, initialTab: 'file' }
           })} />
           <MenuListItem icon="link" label="링크" color="#007AFF" onPress={() => router.push({
             pathname: '/(screens)/chat/ChatArchive',
-            params: { projectId: 'projectId', initialTab: 'link' }
+            params: { projectId: roomId, initialTab: 'link' }
           })} />
           <MenuListItem icon="calendar" label="일정" color="#4FC3F7" onPress={() => { }} />
         </View>
@@ -95,25 +98,12 @@ export default function ChatMenuScreen() {
 
         {/* 멤버 카드 */}
         <View style={[styles.card, { marginBottom: Math.max(insets.bottom, 40) }]}>
-          <Text style={styles.memberCountText}>대화상대 13</Text>
-          <TouchableOpacity style={styles.inviteBtn}>
-            <View style={styles.plusIconCircle}>
-              <Icon name="add" size={18} color="#007AFF" />
-            </View>
-            <Text style={styles.inviteText}>초대하기</Text>
-          </TouchableOpacity>
+          <Text style={styles.memberCountText}>대화상대 {members.length}</Text>
 
-          {MEMBERS.map(m => (
+          {members.map(m => (
             <View key={m.id} style={styles.memberRow}>
               <View style={[styles.smallAvatar, { backgroundColor: m.me ? '#E5E7EB' : '#A5F3FC' }]}>
-                {m.me ? (
-                  <Image
-                    source={{ uri: 'https://images.unsplash.com/photo-1599566150163-29194dcaad36?w=100&h=100&fit=crop' }}
-                    style={{ width: '100%', height: '100%', borderRadius: 14 }}
-                  />
-                ) : (
-                  <Text style={styles.avatarInitial}>{m.initial}</Text>
-                )}
+                <Text style={styles.avatarInitial}>{m.initial}</Text>
               </View>
               <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
                 {m.me && (

@@ -35,12 +35,15 @@ def _build(row: dict, participants: list[dict], project_name: str | None = None)
         duration_seconds=row.get("duration_seconds", 0),
         summary=row.get("summary") or [],
         transcript=row.get("transcript"),
+        keywords=row.get("keywords") or [],
+        speaker_stats=row.get("speaker_stats") or {},
         participants=[
             ParticipantResponse(
                 id=p["id"],
                 name=p["name"],
                 speak_time_seconds=p.get("speak_time_seconds", 0),
                 member_id=p.get("member_id"),
+                speaker_label=p.get("speaker_label"),
             )
             for p in participants
         ],
@@ -164,7 +167,10 @@ def process_audio(meeting_id: str, audio_bytes: bytes, filename: str, token: str
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="회의를 찾을 수 없습니다.")
 
     try:
-        transcript = transcribe_audio(audio_bytes, filename)
+        stt = transcribe_audio(audio_bytes, filename)
+        transcript = stt["transcript"]
+        keywords = stt.get("keywords") or []
+        speaker_stats = stt.get("speaker_stats") or {}
         summary = summarize_transcript(transcript)
     except RateLimitError:
         raise HTTPException(
@@ -178,7 +184,55 @@ def process_audio(meeting_id: str, audio_bytes: bytes, filename: str, token: str
         )
 
     supabase_admin.table("meetings").update(
-        {"transcript": transcript, "summary": summary}
+        {"transcript": transcript, "summary": summary,
+         "keywords": keywords, "speaker_stats": speaker_stats}
     ).eq("id", meeting_id).execute()
+
+    return get_meeting(meeting_id, token)
+
+
+def set_speaker_mapping(meeting_id: str, mappings: list, token: str) -> MeetingResponse:
+    """화자번호→멤버 수동 매칭. meeting_participants를 재생성하고
+    speaker_stats의 화자별 발언시간을 speak_time_seconds로 채운다."""
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("meetings")
+        .select("*")
+        .eq("id", meeting_id)
+        .eq("owner_id", user.id)
+        .limit(1)
+        .execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="회의를 찾을 수 없습니다.")
+    row = rows[0]
+    speaker_stats: dict = row.get("speaker_stats") or {}
+
+    # 멤버 이름 조회
+    member_ids = [m.member_id for m in mappings if m.member_id]
+    name_map: dict[str, str] = {}
+    if member_ids:
+        members = (
+            supabase_admin.table("project_members")
+            .select("id, name")
+            .in_("id", member_ids)
+            .execute()
+        ).data
+        name_map = {m["id"]: m.get("name") or "멤버" for m in members}
+
+    # 기존 참여자 제거 후 매핑대로 재생성
+    supabase_admin.table("meeting_participants").delete().eq("meeting_id", meeting_id).execute()
+    new_parts = [
+        {
+            "meeting_id": meeting_id,
+            "name": name_map.get(m.member_id, f"화자 {m.speaker}"),
+            "speak_time_seconds": int(round(float(speaker_stats.get(str(m.speaker), 0)))),
+            "member_id": m.member_id,
+            "speaker_label": str(m.speaker),
+        }
+        for m in mappings
+    ]
+    if new_parts:
+        supabase_admin.table("meeting_participants").insert(new_parts).execute()
 
     return get_meeting(meeting_id, token)

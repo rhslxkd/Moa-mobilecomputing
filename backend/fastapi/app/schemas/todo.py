@@ -9,6 +9,7 @@ class TodoCreate(BaseModel):
     assignee_member_id: Optional[str] = None
     due_date: Optional[str] = None    # "YYYY-MM-DD"
     start_date: Optional[str] = None  # "YYYY-MM-DD"
+    difficulty: int = 2               # 1=하 2=중 3=상
 
 
 class TodoUpdate(BaseModel):
@@ -18,6 +19,7 @@ class TodoUpdate(BaseModel):
     due_date: Optional[str] = None
     start_date: Optional[str] = None
     done: Optional[bool] = None
+    difficulty: Optional[int] = None
 
 
 class TodoResponse(BaseModel):
@@ -30,3 +32,4 @@ class TodoResponse(BaseModel):
     done: bool
     due_date: Optional[str]    # "YYYY-MM-DD"
     start_date: Optional[str]
+    difficulty: int = 2

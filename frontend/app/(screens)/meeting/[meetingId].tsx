@@ -16,7 +16,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import Icon from "@/components/common/Icon";
-import { MeetingAPI, MeetingDTO } from "@/services/api";
+import { MeetingAPI, MeetingDTO, ProjectAPI, MemberDTO } from "@/services/api";
 
 const AVATAR_COLORS = ["#2563EB", "#7C3AED", "#0D9488", "#D97706", "#DC2626", "#0891B2"];
 
@@ -41,17 +41,53 @@ export default function MeetingDetailScreen() {
 
   const [meeting, setMeeting] = useState<MeetingDTO | null>(null);
   const [loading, setLoading] = useState(true);
+  const [members, setMembers] = useState<MemberDTO[]>([]);
+  // 화자번호 → member_id 매핑 (UI 편집용)
+  const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [savingMap, setSavingMap] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       if (!meetingId) return;
       setLoading(true);
       MeetingAPI.get(meetingId)
-        .then(setMeeting)
+        .then((m) => {
+          setMeeting(m);
+          // 기존 매칭(participants.speaker_label) 복원
+          const init: Record<string, string> = {};
+          m.participants.forEach((p) => {
+            if (p.member_id && p.speaker_label) {
+              init[p.speaker_label] = p.member_id;
+            }
+          });
+          setMapping(init);
+          if (m.project_id) {
+            ProjectAPI.get(m.project_id)
+              .then((proj) => setMembers(proj.members))
+              .catch(() => setMembers([]));
+          }
+        })
         .catch(() => setMeeting(null))
         .finally(() => setLoading(false));
     }, [meetingId])
   );
+
+  const speakers = meeting?.speaker_stats ? Object.keys(meeting.speaker_stats).sort() : [];
+  const totalSpeak = speakers.reduce((sum, sp) => sum + (meeting!.speaker_stats[sp] || 0), 0);
+
+  const saveMapping = async () => {
+    if (!meetingId) return;
+    setSavingMap(true);
+    try {
+      const mappings = speakers.map((sp) => ({ speaker: sp, member_id: mapping[sp] || undefined }));
+      const updated = await MeetingAPI.setSpeakerMapping(meetingId, mappings);
+      setMeeting(updated);
+    } catch {
+      // noop
+    } finally {
+      setSavingMap(false);
+    }
+  };
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
@@ -119,6 +155,81 @@ export default function MeetingDetailScreen() {
             )}
           </View>
 
+          {/* 키워드 */}
+          {meeting.keywords && meeting.keywords.length > 0 && (
+            <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+              <Text style={[s.sectionTitle, { color: C.text }]}>🔑 키워드</Text>
+              <View style={s.keywordRow}>
+                {meeting.keywords.map((kw, i) => (
+                  <View key={i} style={[s.keywordChip, { backgroundColor: C.primary + "12", borderColor: C.primary + "30" }]}>
+                    <Text style={[s.keywordText, { color: C.primary }]}>{kw}</Text>
+                  </View>
+                ))}
+              </View>
+            </View>
+          )}
+
+          {/* 화자별 발언 + 멤버 매칭 */}
+          {speakers.length > 0 && (
+            <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+              <Text style={[s.sectionTitle, { color: C.text }]}>🎤 화자별 발언 / 멤버 매칭</Text>
+              {speakers.map((sp) => {
+                const sec = meeting.speaker_stats[sp] || 0;
+                const pct = totalSpeak > 0 ? Math.round((sec / totalSpeak) * 100) : 0;
+                return (
+                  <View key={sp} style={s.speakerBlock}>
+                    <View style={s.speakerHeader}>
+                      <Text style={[s.speakerName, { color: C.text }]}>화자 {sp}</Text>
+                      <Text style={[s.speakerMeta, { color: C.textMuted }]}>
+                        {formatDuration(Math.round(sec))} · {pct}%
+                      </Text>
+                    </View>
+                    <View style={[s.barTrack, { backgroundColor: C.bgMuted }]}>
+                      <View style={[s.barFill, { width: `${pct}%`, backgroundColor: C.primary }]} />
+                    </View>
+                    {/* 멤버 선택 칩 */}
+                    {members.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.memberChipRow}>
+                        <TouchableOpacity
+                          activeOpacity={0.7}
+                          onPress={() => setMapping((prev) => { const n = { ...prev }; delete n[sp]; return n; })}
+                          style={[s.memberChip, { borderColor: C.border }, !mapping[sp] && { backgroundColor: C.primary, borderColor: C.primary }]}
+                        >
+                          <Text style={[s.memberChipText, { color: !mapping[sp] ? "#fff" : C.textMuted }]}>없음</Text>
+                        </TouchableOpacity>
+                        {members.map((m) => {
+                          const active = mapping[sp] === m.id;
+                          return (
+                            <TouchableOpacity
+                              key={m.id}
+                              activeOpacity={0.7}
+                              onPress={() => setMapping((prev) => ({ ...prev, [sp]: m.id }))}
+                              style={[s.memberChip, { borderColor: C.border }, active && { backgroundColor: C.primary, borderColor: C.primary }]}
+                            >
+                              <Text style={[s.memberChipText, { color: active ? "#fff" : C.text }]}>{m.name}</Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </ScrollView>
+                    )}
+                  </View>
+                );
+              })}
+              <TouchableOpacity
+                activeOpacity={0.8}
+                onPress={saveMapping}
+                disabled={savingMap}
+                style={[s.saveBtn, { backgroundColor: C.primary }]}
+              >
+                {savingMap ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={s.saveBtnText}>매칭 저장</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* 회의록 전문 */}
           <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
             <Text style={[s.sectionTitle, { color: C.text }]}>회의록 전문</Text>
@@ -167,4 +278,20 @@ const s = StyleSheet.create({
 
   transcriptText: { fontSize: 14, lineHeight: 23, marginTop: 2 },
   emptyText: { fontSize: 13, lineHeight: 20, marginTop: 2 },
+
+  keywordRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
+  keywordChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+  keywordText: { fontSize: 13, fontWeight: "600" },
+
+  speakerBlock: { gap: 6, marginTop: 8 },
+  speakerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  speakerName: { fontSize: 14, fontWeight: "700" },
+  speakerMeta: { fontSize: 12 },
+  barTrack: { height: 8, borderRadius: 4, overflow: "hidden" },
+  barFill: { height: 8, borderRadius: 4 },
+  memberChipRow: { gap: 8, paddingVertical: 2, paddingRight: 4 },
+  memberChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
+  memberChipText: { fontSize: 12, fontWeight: "600" },
+  saveBtn: { marginTop: 12, paddingVertical: 12, borderRadius: 12, alignItems: "center", justifyContent: "center" },
+  saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });

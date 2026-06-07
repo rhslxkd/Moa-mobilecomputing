@@ -24,6 +24,7 @@ import {
   Platform,
   Alert,
 } from "react-native";
+import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { NotificationAPI, InvitationAPI } from "@/services/api";
 
@@ -53,6 +54,7 @@ interface AlarmModalProps {
 
 export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
   const C = useTheme();
+  const router = useRouter();
   const [alarms, setAlarms] = useState<AlarmItem[]>([]);
   // 역할 선택 모달
   const [roleTarget, setRoleTarget] = useState<{ memberId: string; projectName: string } | null>(null);
@@ -99,6 +101,22 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
     setRoleTarget(null);
     loadAlarms();
     Alert.alert("수락 완료", `'${roleTarget.projectName}' 프로젝트 팀원이 됐어요!`);
+  };
+
+  // 알림 탭 → 읽음 처리 + 해당 화면으로 이동
+  const handleAlarmPress = async (alarm: AlarmItem) => {
+    // 초대 알림은 수락/거절 버튼으로 처리하므로 이동 안 함
+    if (alarm.id.startsWith("invite-")) return;
+
+    await NotificationAPI.markRead(alarm.id).catch(() => {});
+    setAlarms((prev) => prev.filter((a) => a.id !== alarm.id));
+
+    // 회의록 알림 → 회의 상세로 이동
+    if (alarm.id.startsWith("meeting-")) {
+      const meetingId = alarm.id.replace("meeting-", "");
+      onClose();
+      router.push(`/(screens)/meeting/${meetingId}` as any);
+    }
   };
 
   const unreadCount = alarms.filter((a) => !a.read).length;
@@ -151,6 +169,7 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
                 <TouchableOpacity
                   key={alarm.id}
                   activeOpacity={0.75}
+                  onPress={() => handleAlarmPress(alarm)}
                   style={[
                     styles.alarmItem,
                     {

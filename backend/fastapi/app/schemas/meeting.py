@@ -13,6 +13,7 @@ class ParticipantResponse(BaseModel):
     name: str
     speak_time_seconds: int
     member_id: Optional[str]
+    speaker_label: Optional[str] = None
 
 
 class MeetingCreate(BaseModel):
@@ -23,6 +24,15 @@ class MeetingCreate(BaseModel):
     participants: list[ParticipantCreate] = []
 
 
+class SpeakerMapping(BaseModel):
+    speaker: str
+    member_id: Optional[str] = None
+
+
+class SpeakerMappingRequest(BaseModel):
+    mappings: list[SpeakerMapping] = []
+
+
 class MeetingResponse(BaseModel):
     id: str
     title: str
@@ -31,5 +41,7 @@ class MeetingResponse(BaseModel):
     duration_seconds: int
     summary: list[str]
     transcript: Optional[str]
+    keywords: list[str] = []
+    speaker_stats: dict[str, float] = {}
     participants: list[ParticipantResponse]
     created_at: str

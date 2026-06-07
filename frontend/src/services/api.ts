@@ -9,7 +9,7 @@
  *   - 실제 기기: "http://[내 맥 IP]:8000"  (예: "http://192.168.0.5:8000")
  */
 
-export const BASE_URL = "http://192.168.0.6:8000";
+export const BASE_URL = "http://192.0.0.2:8000";
 
 // ── 토큰 인메모리 저장소 ────────────────────────────────────────
 // 앱 재시작 시 초기화됨. 실제 운영 시 expo-secure-store 사용 권장.
@@ -198,6 +198,7 @@ export interface TodoDTO {
   done: boolean;
   due_date: string | null;   // "YYYY-MM-DD"
   start_date: string | null;
+  difficulty: number;        // 1=하 2=중 3=상
 }
 
 export const TodoAPI = {
@@ -214,6 +215,7 @@ export const TodoAPI = {
     assignee_member_id?: string;
     due_date?: string;
     start_date?: string;
+    difficulty?: number;
   }) =>
     request<TodoDTO>("/todos", { method: "POST", body: JSON.stringify(body) }),
 
@@ -222,6 +224,7 @@ export const TodoAPI = {
     description?: string;
     done?: boolean;
     due_date?: string;
+    difficulty?: number;
   }) =>
     request<TodoDTO>(`/todos/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
@@ -238,6 +241,7 @@ export interface MeetingParticipantDTO {
   name: string;
   speak_time_seconds: number;
   member_id: string | null;
+  speaker_label?: string | null;
 }
 
 export interface MeetingDTO {
@@ -248,6 +252,8 @@ export interface MeetingDTO {
   duration_seconds: number;
   summary: string[];
   transcript: string | null;
+  keywords: string[];
+  speaker_stats: Record<string, number>;
   participants: MeetingParticipantDTO[];
   created_at: string;
 }
@@ -274,7 +280,14 @@ export const MeetingAPI = {
   delete: (id: string) =>
     request<void>(`/meetings/${id}`, { method: "DELETE" }),
 
-  /** 오디오 업로드 → Whisper 전사 + GPT 요약 */
+  /** 화자번호 → 멤버 수동 매칭 */
+  setSpeakerMapping: (id: string, mappings: { speaker: string; member_id?: string }[]) =>
+    request<MeetingDTO>(`/meetings/${id}/speaker-mapping`, {
+      method: "POST",
+      body: JSON.stringify({ mappings }),
+    }),
+
+  /** 오디오 업로드 → 다글로 전사 + GPT 요약 */
   uploadAudio: async (id: string, audioUri: string): Promise<MeetingDTO> => {
     const form = new FormData();
     const filename = audioUri.split("/").pop() || "audio.m4a";
@@ -365,6 +378,9 @@ export interface MemberReportDTO {
   todos_done: number;
   todos_total: number;
   contribution: number;
+  score: number;
+  speak_seconds: number;
+  ai_comment: string | null;
 }
 
 export interface ReportDTO {
@@ -375,6 +391,7 @@ export interface ReportDTO {
   done_todos: number;
   completion_rate: number;
   meeting_count: number;
+  overall_comment: string | null;
 }
 
 export const ReportAPI = {
@@ -396,6 +413,12 @@ export interface NotificationDTO {
 export const NotificationAPI = {
   list: () =>
     request<NotificationDTO[]>("/notifications", { method: "GET" }),
+
+  markRead: (notificationId: string) =>
+    request<void>("/notifications/read", {
+      method: "POST",
+      body: JSON.stringify({ notification_id: notificationId }),
+    }),
 };
 
 // ── Chat API ───────────────────────────────────────────────
@@ -438,6 +461,11 @@ export const ChatAPI = {
 
   messages: (roomId: string) =>
     request<MessageDTO[]>(`/chat/rooms/${roomId}/messages`, { method: "GET" }),
+
+  roomMembers: (roomId: string) =>
+    request<{ user_id: string; name: string; is_me: boolean }[]>(
+      `/chat/rooms/${roomId}/members`, { method: "GET" },
+    ),
 
   send: (roomId: string, content: string) =>
     request<MessageDTO>(`/chat/rooms/${roomId}/messages`, {

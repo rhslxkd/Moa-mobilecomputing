@@ -316,6 +316,18 @@ def get_read_status(room_id: str, token: str) -> list[dict]:
     return rows
 
 
+def list_room_members(room_id: str, token: str) -> list[dict]:
+    """채팅방 멤버 목록 (profile 이름 포함)."""
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    ids = _member_ids(room_id)
+    pmap = _profiles_map(ids)
+    return [
+        {"user_id": uid, "name": _display_name(pmap.get(uid, {})), "is_me": uid == user.id}
+        for uid in ids
+    ]
+
+
 def mark_as_read(room_id: str, token: str) -> None:
     """채팅방 입장 시 last_read_at 갱신."""
     user = _get_user(token)

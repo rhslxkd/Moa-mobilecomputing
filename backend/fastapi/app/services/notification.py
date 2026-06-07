@@ -36,9 +36,31 @@ def _relative_time(iso: str) -> str:
     return f"{days}일 전"
 
 
-def list_notifications(token: str) -> list[NotificationResponse]:
-    """todo 마감 임박 + 최근 회의를 알림으로 동적 합성."""
+def _read_ids(user_id: str) -> set[str]:
+    rows = (
+        supabase_admin.table("notification_reads")
+        .select("notification_id")
+        .eq("user_id", user_id)
+        .execute()
+    ).data
+    return {r["notification_id"] for r in rows}
+
+
+def mark_read(notification_id: str, token: str) -> None:
+    """알림을 읽음 처리 (중복이면 무시)."""
     user = _get_user(token)
+    try:
+        supabase_admin.table("notification_reads").insert(
+            {"user_id": user.id, "notification_id": notification_id}
+        ).execute()
+    except Exception:
+        pass  # unique 충돌 = 이미 읽음
+
+
+def list_notifications(token: str) -> list[NotificationResponse]:
+    """todo 마감 임박 + 최근 회의를 알림으로 동적 합성. 읽은 알림은 제외."""
+    user = _get_user(token)
+    read_ids = _read_ids(user.id)
 
     projects = (
         supabase_admin.table("projects")
@@ -123,4 +145,6 @@ def list_notifications(token: str) -> list[NotificationResponse]:
             read=False,
         ))
 
-    return invite_notifs + [n for _, n in todo_notifs] + meeting_notifs
+    all_notifs = invite_notifs + [n for _, n in todo_notifs] + meeting_notifs
+    # 읽은 알림은 제외
+    return [n for n in all_notifs if n.id not in read_ids]

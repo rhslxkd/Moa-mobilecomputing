@@ -34,6 +34,7 @@ import {
 import { ActivityIndicator } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
+import { useAuth } from "@/contexts/AuthContext";
 import { MeetingAPI } from "@/services/api";
 
 // 멤버 아바타 색상 팔레트
@@ -112,13 +113,27 @@ export default function MeetingRecordingScreen() {
   const router = useRouter();
   const { currentProject } = useProject();
 
-  // 실제 프로젝트 멤버 → 참여자
-  const participants = (currentProject?.members ?? []).map((m, i) => ({
-    name: m.name,
-    initial: m.name.charAt(0),
-    color: AVATAR_COLORS[i % AVATAR_COLORS.length],
-    memberId: m.id,
-  }));
+  const { user } = useAuth();
+
+  // 실제 프로젝트 멤버 → 참여자 (+ 회의 연 사람 본인)
+  const memberList = currentProject?.members ?? [];
+  const meAlreadyMember = memberList.some((m) => m.userId === user?.id);
+  const participants = [
+    ...(meAlreadyMember
+      ? []
+      : [{
+          name: user?.fullName || "나",
+          initial: (user?.fullName || "나").charAt(0),
+          color: AVATAR_COLORS[0],
+          memberId: undefined as string | undefined,
+        }]),
+    ...memberList.map((m, i) => ({
+      name: m.name,
+      initial: m.name.charAt(0),
+      color: AVATAR_COLORS[(i + 1) % AVATAR_COLORS.length],
+      memberId: m.id as string | undefined,
+    })),
+  ];
 
   // 오디오 레코더
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
