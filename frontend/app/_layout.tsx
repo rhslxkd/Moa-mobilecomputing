@@ -66,6 +66,7 @@ export default function RootLayout() {
           {/* 회의 */}
           <Stack.Screen name="(screens)/meeting/index"     options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
           <Stack.Screen name="(screens)/meeting/recording" options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
+          <Stack.Screen name="(screens)/meeting/finalize"  options={{ presentation: "fullScreenModal", gestureEnabled: false }} />
           {/* QR */}
           <Stack.Screen name="(screens)/qr/scan" options={{ presentation: "fullScreenModal", gestureEnabled: true, gestureDirection: "vertical" }} />
           {/* 리포트 */}

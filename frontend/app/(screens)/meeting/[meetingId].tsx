@@ -11,6 +11,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
+  Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
@@ -45,6 +47,36 @@ export default function MeetingDetailScreen() {
   // 화자번호 → member_id 매핑 (UI 편집용)
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [savingMap, setSavingMap] = useState(false);
+  const [addingIdx, setAddingIdx] = useState<number | null>(null);
+  // 할 일 추가 모달
+  const [actionModalIdx, setActionModalIdx] = useState<number | null>(null);
+  const [actionTitle, setActionTitle] = useState("");
+  const [actionAssignee, setActionAssignee] = useState<string | null>(null);
+
+  const openActionModal = (index: number) => {
+    const it = meeting?.action_items[index];
+    setActionTitle(it?.title ?? "");
+    setActionAssignee(null);
+    setActionModalIdx(index);
+  };
+
+  const confirmAddActionItem = async () => {
+    if (!meetingId || actionModalIdx === null) return;
+    const idx = actionModalIdx;
+    setActionModalIdx(null);
+    setAddingIdx(idx);
+    try {
+      const updated = await MeetingAPI.addActionItem(meetingId, idx, {
+        title: actionTitle.trim() || undefined,
+        assignee_member_id: actionAssignee ?? undefined,
+      });
+      setMeeting(updated);
+    } catch {
+      // noop
+    } finally {
+      setAddingIdx(null);
+    }
+  };
 
   useFocusEffect(
     useCallback(() => {
@@ -57,7 +89,10 @@ export default function MeetingDetailScreen() {
           const init: Record<string, string> = {};
           m.participants.forEach((p) => {
             if (p.member_id && p.speaker_label) {
-              init[p.speaker_label] = p.member_id;
+              // speaker_label은 "1,3,5"처럼 여러 화자가 한 멤버에 묶일 수 있음
+              p.speaker_label.split(",").forEach((sp) => {
+                if (sp) init[sp] = p.member_id!;
+              });
             }
           });
           setMapping(init);
@@ -135,6 +170,65 @@ export default function MeetingDetailScreen() {
             </View>
           )}
 
+          {/* 출석 */}
+          {(meeting.attendance.length > 0 || meeting.absentees.length > 0) && (
+            <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+              <Text style={[s.sectionTitle, { color: C.text }]}>🙋 출석</Text>
+              {meeting.attendance.map((a) => {
+                const late = (a.late_seconds ?? 0) >= 120;
+                return (
+                  <View key={a.user_id} style={s.attRow}>
+                    <Text style={[s.attName, { color: C.text }]}>{a.name}</Text>
+                    <Text style={[s.attBadge, { color: late ? "#D97706" : "#16A34A" }]}>
+                      {late ? `지각 ${Math.round((a.late_seconds ?? 0) / 60)}분` : "정시"}
+                      {a.reason ? ` · ${a.reason}` : ""}
+                    </Text>
+                  </View>
+                );
+              })}
+              {meeting.absentees.map((a) => (
+                <View key={a.member_id ?? a.user_id ?? a.name} style={s.attRow}>
+                  <Text style={[s.attName, { color: C.textMuted }]}>{a.name}</Text>
+                  <Text style={[s.attBadge, { color: "#DC2626" }]}>
+                    불참{a.reason ? ` · ${a.reason}` : ""}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          )}
+
+          {/* 회의에서 나온 할 일 */}
+          {meeting.action_items.length > 0 && (
+            <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+              <Text style={[s.sectionTitle, { color: C.text }]}>📋 회의에서 나온 할 일</Text>
+              <Text style={[s.emptyText, { color: C.textMuted }]}>추가할 항목만 골라 Todo로 등록하세요.</Text>
+              {meeting.action_items.map((it, i) => (
+                <View key={i} style={s.actionRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={[s.actionTitle, { color: C.text }]}>{it.title}</Text>
+                    {it.date ? <Text style={[s.actionDate, { color: C.textMuted }]}>📅 {it.date}</Text> : null}
+                  </View>
+                  {it.added ? (
+                    <View style={[s.addedChip, { backgroundColor: "#16A34A18" }]}>
+                      <Text style={{ color: "#16A34A", fontSize: 12, fontWeight: "700" }}>✓ 추가됨</Text>
+                    </View>
+                  ) : (
+                    <TouchableOpacity
+                      style={[s.addBtn, { backgroundColor: C.primary }]}
+                      activeOpacity={0.8}
+                      disabled={addingIdx === i}
+                      onPress={() => openActionModal(i)}
+                    >
+                      {addingIdx === i
+                        ? <ActivityIndicator size="small" color="#fff" />
+                        : <Text style={s.addBtnText}>Todo 추가</Text>}
+                    </TouchableOpacity>
+                  )}
+                </View>
+              ))}
+            </View>
+          )}
+
           {/* AI 요약 */}
           <View style={[s.card, { backgroundColor: C.primary + "08", borderColor: C.primary + "30" }]}>
             <View style={s.sectionHeader}>
@@ -173,6 +267,9 @@ export default function MeetingDetailScreen() {
           {speakers.length > 0 && (
             <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
               <Text style={[s.sectionTitle, { color: C.text }]}>🎤 화자별 발언 / 멤버 매칭</Text>
+              <Text style={[s.speakerHint, { color: C.textMuted }]}>
+                발언 내용을 보고 같은 사람이면 같은 멤버로 묶어주세요. (여러 화자 → 한 명 가능)
+              </Text>
               {speakers.map((sp) => {
                 const sec = meeting.speaker_stats[sp] || 0;
                 const pct = totalSpeak > 0 ? Math.round((sec / totalSpeak) * 100) : 0;
@@ -187,6 +284,12 @@ export default function MeetingDetailScreen() {
                     <View style={[s.barTrack, { backgroundColor: C.bgMuted }]}>
                       <View style={[s.barFill, { width: `${pct}%`, backgroundColor: C.primary }]} />
                     </View>
+                    {/* 화자 대표 발언 (누구인지 식별용) */}
+                    {meeting.speaker_samples?.[sp] ? (
+                      <Text style={[s.speakerSample, { color: C.textSub }]} numberOfLines={2}>
+                        “{meeting.speaker_samples[sp]}”
+                      </Text>
+                    ) : null}
                     {/* 멤버 선택 칩 */}
                     {members.length > 0 && (
                       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.memberChipRow}>
@@ -241,6 +344,68 @@ export default function MeetingDetailScreen() {
           </View>
         </ScrollView>
       )}
+
+      {/* 할 일 추가 모달 — 제목 + 담당자 선택 */}
+      <Modal visible={actionModalIdx !== null} transparent animationType="fade" onRequestClose={() => setActionModalIdx(null)}>
+        <View style={s.modalBackdrop}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setActionModalIdx(null)} />
+          <View style={[s.modalBox, { backgroundColor: C.bgCard }]}>
+            <Text style={[s.modalTitle, { color: C.text }]}>📋 할 일 추가</Text>
+
+            <Text style={[s.modalLabel, { color: C.textMuted }]}>제목</Text>
+            <TextInput
+              style={[s.modalInput, { color: C.text, borderColor: C.border }]}
+              value={actionTitle}
+              onChangeText={setActionTitle}
+              placeholder="할 일 제목"
+              placeholderTextColor={C.textMuted}
+            />
+
+            <Text style={[s.modalLabel, { color: C.textMuted }]}>담당자 (역할)</Text>
+            {members.length > 0 ? (
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.memberChipRow}>
+                <TouchableOpacity
+                  activeOpacity={0.7}
+                  onPress={() => setActionAssignee(null)}
+                  style={[s.memberChip, { borderColor: C.border }, !actionAssignee && { backgroundColor: C.primary, borderColor: C.primary }]}
+                >
+                  <Text style={[s.memberChipText, { color: !actionAssignee ? "#fff" : C.textMuted }]}>미배정</Text>
+                </TouchableOpacity>
+                {members.map((m) => {
+                  const active = actionAssignee === m.id;
+                  return (
+                    <TouchableOpacity
+                      key={m.id}
+                      activeOpacity={0.7}
+                      onPress={() => setActionAssignee(m.id)}
+                      style={[s.memberChip, { borderColor: C.border }, active && { backgroundColor: C.primary, borderColor: C.primary }]}
+                    >
+                      <Text style={[s.memberChipText, { color: active ? "#fff" : C.text }]}>
+                        {m.name}{m.roles?.length ? ` · ${m.roles[0]}` : ""}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            ) : (
+              <Text style={[s.emptyText, { color: C.textMuted }]}>프로젝트 회의가 아니면 미배정으로 추가돼요.</Text>
+            )}
+
+            <View style={s.modalBtnRow}>
+              <TouchableOpacity style={[s.modalBtn, { borderColor: C.border }]} onPress={() => setActionModalIdx(null)}>
+                <Text style={{ color: C.textSub, fontWeight: "600" }}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.modalBtn, { backgroundColor: C.primary, borderColor: C.primary }]}
+                onPress={confirmAddActionItem}
+                disabled={!actionTitle.trim()}
+              >
+                <Text style={{ color: "#fff", fontWeight: "700" }}>추가</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -279,10 +444,31 @@ const s = StyleSheet.create({
   transcriptText: { fontSize: 14, lineHeight: 23, marginTop: 2 },
   emptyText: { fontSize: 13, lineHeight: 20, marginTop: 2 },
 
+  attRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingVertical: 5 },
+  attName: { fontSize: 14, fontWeight: "600" },
+  attBadge: { fontSize: 12, fontWeight: "600", flexShrink: 1, textAlign: "right", marginLeft: 8 },
+
+  actionRow: { flexDirection: "row", alignItems: "center", gap: 10, paddingVertical: 8, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: "rgba(127,127,127,0.2)" },
+  actionTitle: { fontSize: 14, fontWeight: "500" },
+  actionDate: { fontSize: 12, marginTop: 2 },
+  addBtn: { paddingHorizontal: 14, paddingVertical: 8, borderRadius: 10, minWidth: 76, alignItems: "center" },
+  addBtnText: { color: "#fff", fontSize: 13, fontWeight: "700" },
+  addedChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 10 },
+
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", paddingHorizontal: 24 },
+  modalBox: { borderRadius: 18, padding: 20, gap: 8 },
+  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 4 },
+  modalLabel: { fontSize: 12, fontWeight: "600", marginTop: 8 },
+  modalInput: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10, fontSize: 14 },
+  modalBtnRow: { flexDirection: "row", gap: 10, marginTop: 14 },
+  modalBtn: { flex: 1, borderWidth: 1, borderRadius: 10, paddingVertical: 12, alignItems: "center" },
+
   keywordRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 4 },
   keywordChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
   keywordText: { fontSize: 13, fontWeight: "600" },
 
+  speakerHint: { fontSize: 12, lineHeight: 17, marginTop: 2 },
+  speakerSample: { fontSize: 13, lineHeight: 19, fontStyle: "italic", marginTop: 2 },
   speakerBlock: { gap: 6, marginTop: 8 },
   speakerHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   speakerName: { fontSize: 14, fontWeight: "700" },

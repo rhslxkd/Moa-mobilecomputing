@@ -9,7 +9,7 @@
  *   - 실제 기기: "http://[내 맥 IP]:8000"  (예: "http://192.168.0.5:8000")
  */
 
-export const BASE_URL = "http://192.0.0.2:8000";
+export const BASE_URL = "http://192.168.0.6:8000";
 
 // ── 토큰 인메모리 저장소 ────────────────────────────────────────
 // 앱 재시작 시 초기화됨. 실제 운영 시 expo-secure-store 사용 권장.
@@ -195,6 +195,8 @@ export interface TodoDTO {
   project_id: string | null;
   project_name: string | null;
   assignee_member_id: string | null;
+  assignee_name: string | null;
+  assignee_roles: string[];
   done: boolean;
   due_date: string | null;   // "YYYY-MM-DD"
   start_date: string | null;
@@ -225,6 +227,7 @@ export const TodoAPI = {
     done?: boolean;
     due_date?: string;
     difficulty?: number;
+    assignee_member_id?: string;   // "" → 미배정
   }) =>
     request<TodoDTO>(`/todos/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
@@ -244,6 +247,28 @@ export interface MeetingParticipantDTO {
   speaker_label?: string | null;
 }
 
+export interface MeetingAttendanceDTO {
+  user_id: string;
+  member_id: string | null;
+  name: string;
+  joined_at: string | null;
+  late_seconds: number;
+  reason: string | null;
+}
+
+export interface MeetingAbsenteeDTO {
+  member_id: string | null;
+  user_id: string | null;
+  name: string;
+  reason: string | null;
+}
+
+export interface MeetingActionItemDTO {
+  title: string;
+  date: string | null;
+  added: boolean;
+}
+
 export interface MeetingDTO {
   id: string;
   title: string;
@@ -254,7 +279,12 @@ export interface MeetingDTO {
   transcript: string | null;
   keywords: string[];
   speaker_stats: Record<string, number>;
+  speaker_samples: Record<string, string>;
   participants: MeetingParticipantDTO[];
+  started_at: string | null;
+  attendance: MeetingAttendanceDTO[];
+  absentees: MeetingAbsenteeDTO[];
+  action_items: MeetingActionItemDTO[];
   created_at: string;
 }
 
@@ -285,6 +315,31 @@ export const MeetingAPI = {
     request<MeetingDTO>(`/meetings/${id}/speaker-mapping`, {
       method: "POST",
       body: JSON.stringify({ mappings }),
+    }),
+
+  /** 녹음 시작 시 회의 생성 (QR 출석용) */
+  start: (body: { title?: string; project_id?: string }) =>
+    request<MeetingDTO>("/meetings/start", { method: "POST", body: JSON.stringify(body) }),
+
+  /** QR 스캔 → 출석 */
+  attend: (id: string) =>
+    request<{ ok: boolean; late_seconds: number }>(`/meetings/${id}/attend`, { method: "POST" }),
+
+  /** 출석 현황 */
+  attendance: (id: string) =>
+    request<{ attendees: MeetingAttendanceDTO[]; absentees: MeetingAbsenteeDTO[] }>(
+      `/meetings/${id}/attendance`, { method: "GET" },
+    ),
+
+  /** 종료 → 사유 저장 + duration */
+  finalize: (id: string, body: { duration_seconds: number; reasons: { user_id?: string; member_id?: string; reason: string }[] }) =>
+    request<MeetingDTO>(`/meetings/${id}/finalize`, { method: "POST", body: JSON.stringify(body) }),
+
+  /** 회의 할 일 → Todo 추가 (제목/담당자 지정 가능) */
+  addActionItem: (id: string, index: number, body?: { title?: string; assignee_member_id?: string }) =>
+    request<MeetingDTO>(`/meetings/${id}/action-items/${index}/add`, {
+      method: "POST",
+      body: JSON.stringify(body ?? {}),
     }),
 
   /** 오디오 업로드 → 다글로 전사 + GPT 요약 */
@@ -323,6 +378,7 @@ export interface MemberDTO {
 
 export interface ProjectDTO {
   id: string;
+  owner_id: string;
   name: string;
   emoji: string;
   color: string;
@@ -495,7 +551,57 @@ export const ChatAPI = {
       `/chat/rooms/${roomId}/read-status`,
       { method: "GET" },
     ),
+
+  // ── 공지 ──
+  listNotices: (roomId: string) =>
+    request<NoticeDTO[]>(`/chat/rooms/${roomId}/notices`, { method: "GET" }),
+
+  createNotice: (roomId: string, content: string) =>
+    request<NoticeDTO>(`/chat/rooms/${roomId}/notices`, {
+      method: "POST", body: JSON.stringify({ content }),
+    }),
+
+  deleteNotice: (noticeId: string) =>
+    request<void>(`/chat/notices/${noticeId}`, { method: "DELETE" }),
+
+  // ── 투표 ──
+  listPolls: (roomId: string) =>
+    request<PollDTO[]>(`/chat/rooms/${roomId}/polls`, { method: "GET" }),
+
+  createPoll: (roomId: string, question: string, options: string[]) =>
+    request<PollDTO>(`/chat/rooms/${roomId}/polls`, {
+      method: "POST", body: JSON.stringify({ question, options }),
+    }),
+
+  votePoll: (pollId: string, optionIndex: number) =>
+    request<PollDTO>(`/chat/polls/${pollId}/vote`, {
+      method: "POST", body: JSON.stringify({ option_index: optionIndex }),
+    }),
+
+  deletePoll: (pollId: string) =>
+    request<void>(`/chat/polls/${pollId}`, { method: "DELETE" }),
 };
+
+export interface NoticeDTO {
+  id: string;
+  room_id: string;
+  content: string;
+  author_name: string;
+  created_at: string;
+}
+
+export interface PollDTO {
+  id: string;
+  room_id: string;
+  question: string;
+  options: string[];
+  counts: number[];
+  total_votes: number;
+  my_vote: number | null;
+  author_name: string;
+  closed: boolean;
+  created_at: string;
+}
 
 // ── Drive API ──────────────────────────────────────────────
 export interface DriveFolderDTO {
@@ -567,6 +673,18 @@ export const DriveAPI = {
 
   deleteFile: (id: string) =>
     request<void>(`/drive/files/${id}`, { method: "DELETE" }),
+
+  moveFile: (id: string, targetFolderId: string | null) =>
+    request<DriveFileDTO>(`/drive/files/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ target_folder_id: targetFolderId }),
+    }),
+
+  moveFolder: (id: string, targetFolderId: string | null) =>
+    request<DriveFolderDTO>(`/drive/folders/${id}/move`, {
+      method: "POST",
+      body: JSON.stringify({ target_folder_id: targetFolderId }),
+    }),
 };
 
 // ── Invitation API ─────────────────────────────────────────

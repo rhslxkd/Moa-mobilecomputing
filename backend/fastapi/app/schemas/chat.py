@@ -38,3 +38,41 @@ class DirectRoomBody(BaseModel):
 
 class MessageBody(BaseModel):
     content: str
+
+
+# ── 공지 ───────────────────────────────────────────────────
+
+class NoticeBody(BaseModel):
+    content: str
+
+
+class NoticeResponse(BaseModel):
+    id: str
+    room_id: str
+    content: str
+    author_name: str
+    created_at: str
+
+
+# ── 투표 ───────────────────────────────────────────────────
+
+class PollBody(BaseModel):
+    question: str
+    options: list[str]
+
+
+class VoteBody(BaseModel):
+    option_index: int
+
+
+class PollResponse(BaseModel):
+    id: str
+    room_id: str
+    question: str
+    options: list[str]
+    counts: list[int]          # 옵션별 득표 수
+    total_votes: int
+    my_vote: Optional[int] = None
+    author_name: str
+    closed: bool
+    created_at: str

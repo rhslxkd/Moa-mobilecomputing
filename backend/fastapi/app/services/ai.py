@@ -48,45 +48,90 @@ def summarize_transcript(transcript: str) -> list[str]:
     return lines[:5]
 
 
-def analyze_contribution(context: dict) -> dict:
-    """프로젝트 기여도 컨텍스트 → 멤버별 AI 코멘트 + 종합 평가.
-
-    context = {
-      "project_name": str,
-      "members": [{"name", "todos_done", "todos_total", "weighted_score", "speak_seconds"}],
-      "keywords": [str], "summaries": [str],
-    }
-    반환: {"member_comments": {name: comment}, "overall_comment": str}
-    """
-    members = context.get("members") or []
-    if not members:
-        return {"member_comments": {}, "overall_comment": ""}
-
-    sys = (
-        "너는 팀 프로젝트의 기여도를 평가하는 분석가야. "
-        "각 멤버의 완료한 할 일 수와 난이도 가중 점수, 회의 발언량(초), "
-        "회의 키워드/요약을 보고 한국어로 평가해줘. "
-        "반드시 아래 JSON 형식으로만 답해:\n"
-        '{"member_comments": {"멤버이름": "한두 문장 코멘트"}, '
-        '"overall_comment": "팀 전체에 대한 2~3문장 종합 평가(누가 잘하고 있는지 포함)"}\n'
-        "코멘트는 구체적이고 건설적으로, 칭찬과 개선점을 균형있게."
-    )
-    user = json.dumps(context, ensure_ascii=False)
-    raw = chat(
-        [{"role": "system", "content": sys}, {"role": "user", "content": user}],
-        temperature=0.4,
-    )
-    # JSON 파싱 (코드펜스 제거)
+def _parse_json(raw: str):
     text = raw.strip()
     if text.startswith("```"):
         text = text.strip("`")
         if text.startswith("json"):
             text = text[4:]
     try:
-        data = json.loads(text)
+        return json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        return None
+
+
+def extract_action_items(transcript: str) -> list[dict]:
+    """회의 녹취록 → 할 일 목록 [{title, date}]. date는 YYYY-MM-DD 또는 null."""
+    if len(transcript.strip()) < 8:
+        return []
+    from datetime import date
+    today = date.today().isoformat()
+    sys = (
+        "다음 회의 녹취록에서 '해야 할 일(액션 아이템)'을 추출해줘. "
+        f"오늘은 {today}야. '다음 주까지', '내일', '6월 12일' 같은 기한이 있으면 "
+        "YYYY-MM-DD로 환산하고, 없으면 null로 둬. "
+        "할 일이 없으면 빈 배열. 반드시 아래 JSON만 출력:\n"
+        '{"items": [{"title": "간결한 할 일", "date": "YYYY-MM-DD 또는 null"}]}'
+    )
+    raw = chat([{"role": "system", "content": sys}, {"role": "user", "content": transcript}], temperature=0.2)
+    data = _parse_json(raw) or {}
+    items = data.get("items") or []
+    out: list[dict] = []
+    for it in items:
+        title = (it.get("title") or "").strip()
+        if not title:
+            continue
+        d = it.get("date")
+        if isinstance(d, str):
+            d = d.strip()
+            if d.lower() in ("null", "none", ""):
+                d = None
+        else:
+            d = None
+        out.append({"title": title[:100], "date": d})
+    return out[:10]
+
+
+def analyze_contribution(context: dict) -> dict:
+    """프로젝트 기여도(성실도+발언품질) 컨텍스트 → 멤버별 점수/코멘트 + 종합 평가.
+
+    context = {
+      "project_name": str,
+      "members": [{"name", "todos_done", "todos_total",
+                   "attendance": "정시"|"지각 N분"|"불참", "reason": str|null}],
+      "summaries": [str], "transcript": str(요약/일부),
+    }
+    반환: {"member_scores": {name: int}, "member_comments": {name: comment}, "overall_comment": str}
+    """
+    members = context.get("members") or []
+    if not members:
+        return {"member_scores": {}, "member_comments": {}, "overall_comment": ""}
+
+    sys = (
+        "너는 팀 프로젝트의 기여도를 평가하는 공정한 분석가야. "
+        "발언량(말을 많이 했는지)으로 평가하지 말고, **기여의 질과 성실도**로 평가해.\n"
+        "원칙:\n"
+        "1. 각 멤버의 'current_todos'(현재 맡은 할 일: 제목/난이도/완료여부)와 'roles'(역할)를 보고 "
+        "**지금 책임지고 있는 일을 얼마나 해냈는지**로 평가해. 난이도 '상'을 끝낸 게 '하' 여러 개보다 가치 있음.\n"
+        "2. 할 일의 담당은 수시로 바뀌거나 해제될 수 있어. 지금 그 멤버에게 배정된 할 일만 그 사람 몫이야. "
+        "남에게 넘어간(=현재 배정 안 된) 일로 점수 주지 말고, 'unassigned_todos'(담당 없는 일)는 누구의 공으로도 치지 마.\n"
+        "3. 회의에서의 **건설적 기여**는 높게, '회의하기 싫다'처럼 비협조적/부정적 발언은 감점.\n"
+        "4. 출석 성실도 반영: 정시 > 지각 > 불참. 단 **정당한 사유(아파서, 일정 등)가 적힌 지각/불참은 감점하지 마라**. 사유 없는 불참/지각만 감점.\n"
+        "5. 회의에 없었어도 맡은 할 일을 잘 했으면 점수를 받아야 함. 0점은 맡은 일도 안 하고 사유도 없을 때만.\n"
+        "각 멤버 0~100 점수와 한두 문장 코멘트(맡은 일/역할/사유 언급)를 매겨. 반드시 아래 JSON만 출력:\n"
+        '{"member_scores": {"이름": 0-100}, "member_comments": {"이름": "코멘트"}, '
+        '"overall_comment": "팀 전체 2~3문장 종합 평가(누가 맡은 일을 성실히 해냈는지)"}'
+    )
+    user = json.dumps(context, ensure_ascii=False)
+    raw = chat(
+        [{"role": "system", "content": sys}, {"role": "user", "content": user}],
+        temperature=0.4,
+    )
+    data = _parse_json(raw)
+    if data:
         return {
+            "member_scores": data.get("member_scores") or {},
             "member_comments": data.get("member_comments") or {},
             "overall_comment": data.get("overall_comment") or "",
         }
-    except (json.JSONDecodeError, ValueError):
-        return {"member_comments": {}, "overall_comment": raw.strip()[:500]}
+    return {"member_scores": {}, "member_comments": {}, "overall_comment": raw.strip()[:500]}

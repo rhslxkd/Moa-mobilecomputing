@@ -17,6 +17,7 @@ import { useTheme, useIsDark } from "@/hooks/useTheme";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
 import { DriveAPI, DriveFileDTO, DriveFolderDTO } from "@/services/api";
+import OptionSheet from "@/components/modals/OptionSheet";
 
 const { width: SW } = Dimensions.get("window");
 const H_PAD = 21;
@@ -167,6 +168,61 @@ const dl = StyleSheet.create({
   btnText: { fontSize: 15, fontWeight: "600" },
 });
 
+// ── 이동 대상 선택 ────────────────────────────────────────
+interface MoveSheetProps {
+  visible: boolean;
+  folders: FileItem[];
+  onClose: () => void;
+  onSelect: (targetId: string | null) => void;
+}
+function MoveSheet({ visible, folders, onClose, onSelect }: MoveSheetProps) {
+  const C = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+        <TouchableOpacity style={dl.backdrop} activeOpacity={1} onPress={onClose} />
+        <View style={[dl.sheet, { backgroundColor: C.bgCard, maxHeight: "70%" }]}>
+          <View style={dl.handleWrap}><View style={[dl.handle, { backgroundColor: C.border }]} /></View>
+          <Text style={[dl.body, { color: C.text, marginBottom: 16 }]}>어디로 이동할까요?</Text>
+          <ScrollView style={{ maxHeight: 320 }}>
+            <TouchableOpacity
+              style={[mv.row, { borderBottomColor: C.border }]}
+              activeOpacity={0.7}
+              onPress={() => onSelect(null)}
+            >
+              <Icon name="back" size={18} color={C.textMuted} />
+              <Text style={[mv.rowText, { color: C.text }]}>현재 폴더 밖으로 (루트)</Text>
+            </TouchableOpacity>
+            {folders.length === 0 ? (
+              <Text style={[mv.empty, { color: C.textMuted }]}>이동할 하위 폴더가 없어요.</Text>
+            ) : (
+              folders.map((f) => (
+                <TouchableOpacity
+                  key={f.id}
+                  style={[mv.row, { borderBottomColor: C.border }]}
+                  activeOpacity={0.7}
+                  onPress={() => onSelect(f.id)}
+                >
+                  <FolderSvg color="#00A9EC" size={22} />
+                  <Text style={[mv.rowText, { color: C.text }]} numberOfLines={1}>{f.name}</Text>
+                </TouchableOpacity>
+              ))
+            )}
+          </ScrollView>
+          <TouchableOpacity style={[dl.btn, { borderColor: C.border, backgroundColor: C.bgCard, marginTop: 12 }]} onPress={onClose} activeOpacity={0.7}>
+            <Text style={[dl.btnText, { color: C.text }]}>취소</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+const mv = StyleSheet.create({
+  row: { flexDirection: "row", alignItems: "center", gap: 12, paddingVertical: 15, borderBottomWidth: StyleSheet.hairlineWidth },
+  rowText: { fontSize: 15, fontWeight: "500", flex: 1 },
+  empty: { fontSize: 13, paddingVertical: 20, textAlign: "center" },
+});
+
 // ── 메인 ─────────────────────────────────────────────────
 export default function FolderDetailScreen() {
   const C = useTheme();
@@ -184,6 +240,8 @@ export default function FolderDetailScreen() {
   const [subFolders, setSubFolders] = useState<FileItem[]>([]);
   const [subFolderVisible, setSubFolderVisible] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
+  const [actionVisible, setActionVisible] = useState(false);
+  const [moveVisible, setMoveVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [sortMenuOpen, setSortMenuOpen] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -225,6 +283,20 @@ export default function FolderDetailScreen() {
     load();
   };
 
+  const handleMove = async (targetFolderId: string | null) => {
+    if (!selectedFile) return;
+    try {
+      if (selectedFile.type === "folder") {
+        await DriveAPI.moveFolder(selectedFile.id, targetFolderId);
+      } else {
+        await DriveAPI.moveFile(selectedFile.id, targetFolderId);
+      }
+      load();
+    } catch (e: any) {
+      Alert.alert("이동 실패", e?.message ?? "이동할 수 없어요.");
+    }
+  };
+
   const handleUpload = async () => {
     if (uploading) return;
     const res = await DocumentPicker.getDocumentAsync({ type: "*/*", copyToCacheDirectory: true });
@@ -262,15 +334,15 @@ export default function FolderDetailScreen() {
   };
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: "#F1F1F5" }]} edges={["top"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
       {/* ── 헤더 ── */}
-      <View style={[s.header, { backgroundColor: "#FFFFFF", borderBottomColor: "#EEEEEE" }]}>
+      <View style={[s.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
         <TouchableOpacity onPress={() => router.back()} style={s.iconBtn} activeOpacity={0.7}>
-          <Icon name="back" size={22} color="#111111" />
+          <Icon name="back" size={22} color={C.text} />
         </TouchableOpacity>
         <View style={s.headerCenter}>
           <MoaLogo size={24} variant="primary" />
-          <Text style={s.headerTitle} numberOfLines={1}>폴더 · {folderName ?? "폴더"}</Text>
+          <Text style={[s.headerTitle, { color: C.text }]} numberOfLines={1}>폴더 · {folderName ?? "폴더"}</Text>
         </View>
         <View style={s.headerRight}>
           <View style={s.iconBtn} />
@@ -282,7 +354,7 @@ export default function FolderDetailScreen() {
         <View style={s.toolBar} pointerEvents="box-none">
           <View style={{ flex: 1 }} />
           <TouchableOpacity style={s.toolBtn} activeOpacity={0.7} onPress={() => setSortMenuOpen(v => !v)}>
-            <SortIcon color={sortMenuOpen ? "#00A9EC" : "#777777"} />
+            <SortIcon color={sortMenuOpen ? "#00A9EC" : C.textMuted} />
           </TouchableOpacity>
 
           {sortMenuOpen && (
@@ -305,29 +377,29 @@ export default function FolderDetailScreen() {
         <ScrollView contentContainerStyle={[s.listContent, { paddingTop: 50 }]} showsVerticalScrollIndicator={false}>
           {allItems.length === 0 ? (
             <View style={s.emptyWrap}>
-              <FolderSvg color="#CCCCCC" size={64} />
-              <Text style={[s.emptyTitle, { color: "#111111" }]}>파일이 없어요</Text>
-              <Text style={s.emptyDesc}>파일을 업로드하거나 폴더를 추가해보세요</Text>
+              <FolderSvg color={C.textMuted} size={64} />
+              <Text style={[s.emptyTitle, { color: C.text }]}>파일이 없어요</Text>
+              <Text style={[s.emptyDesc, { color: C.textMuted }]}>파일을 업로드하거나 폴더를 추가해보세요</Text>
             </View>
           ) : (
             allItems.map(item => (
               <TouchableOpacity
                 key={item.id}
-                style={[s.fileRow, { backgroundColor: "#FFFFFF", borderBottomColor: "#EEEEEE" }]}
+                style={[s.fileRow, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}
                 activeOpacity={0.7}
                 onPress={() => handleItemPress(item)}
               >
                 <FileIcon type={item.type} size={36} />
                 <View style={{ flex: 1 }}>
-                  <Text style={s.fileName} numberOfLines={1}>{item.name}</Text>
-                  <Text style={s.fileMeta}>{item.size} · {item.date}</Text>
+                  <Text style={[s.fileName, { color: C.text }]} numberOfLines={1}>{item.name}</Text>
+                  <Text style={[s.fileMeta, { color: C.textMuted }]}>{item.size} · {item.date}</Text>
                 </View>
                 <TouchableOpacity
                   style={s.fileOptionBtn}
                   activeOpacity={0.7}
-                  onPress={() => { setSelectedFile(item); setDeleteVisible(true); }}
+                  onPress={() => { setSelectedFile(item); setActionVisible(true); }}
                 >
-                  <Icon name="option" size={20} color="#999999" />
+                  <Icon name="option" size={20} color={C.textMuted} />
                 </TouchableOpacity>
               </TouchableOpacity>
             ))
@@ -358,6 +430,25 @@ export default function FolderDetailScreen() {
 
       <SubFolderSheet visible={subFolderVisible} onClose={() => setSubFolderVisible(false)} onConfirm={handleCreateSubfolder} />
       <DelSheet visible={deleteVisible} name={selectedFile?.name ?? ""} onClose={() => setDeleteVisible(false)} onConfirm={handleDeleteFile} />
+
+      {/* 항목 액션: 이동 / 삭제 */}
+      <OptionSheet
+        isOpen={actionVisible}
+        onClose={() => setActionVisible(false)}
+        title={selectedFile?.name}
+        options={[
+          { label: "이동", emoji: "📂", onPress: () => setMoveVisible(true) },
+          { label: "삭제", emoji: "🗑️", onPress: () => setDeleteVisible(true), isDestructive: true },
+        ]}
+      />
+
+      {/* 이동 대상 선택 */}
+      <MoveSheet
+        visible={moveVisible}
+        folders={subFolders.filter(f => f.id !== selectedFile?.id)}
+        onClose={() => setMoveVisible(false)}
+        onSelect={(targetId) => { setMoveVisible(false); handleMove(targetId); }}
+      />
     </SafeAreaView>
   );
 }

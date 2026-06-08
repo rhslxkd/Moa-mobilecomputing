@@ -198,7 +198,7 @@ const s = StyleSheet.create({
   headerTitle: { fontSize: 20, fontWeight: "700" },
   iconBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
 
-  body: { padding: 16, gap: 12, paddingBottom: 40 },
+  body: { padding: 16, gap: 12, paddingBottom: 120 },
 
   // 프로필 카드
   profileCard: {

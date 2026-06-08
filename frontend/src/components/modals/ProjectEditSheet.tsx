@@ -18,6 +18,7 @@ import {
   Alert,
 } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/contexts/AuthContext";
 import type { Project, Member } from "@/contexts/ProjectContext";
 import { FriendsAPI, FriendDTO } from "@/services/api";
 import Icon from "@/components/common/Icon";
@@ -72,10 +73,28 @@ interface Props {
   project: Project;
   onClose: () => void;
   onSave: (updated: Project) => void;
+  onDelete?: (id: string) => void;
 }
 
-export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: Props) {
+export default function ProjectEditSheet({ isOpen, project, onClose, onSave, onDelete }: Props) {
   const C = useTheme();
+  const { user } = useAuth();
+  const isOwner = !!user && user.id === project.ownerId;
+
+  function handleDelete() {
+    Alert.alert(
+      "프로젝트 삭제",
+      `"${project.name}" 프로젝트를 삭제할까요?\n관련된 모든 할 일·회의·채팅이 함께 삭제됩니다.`,
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "삭제",
+          style: "destructive",
+          onPress: () => { onDelete?.(project.id); onClose(); },
+        },
+      ],
+    );
+  }
 
   const [name, setName]         = useState(project.name);
   const [emoji, setEmoji]       = useState(project.emoji);
@@ -87,16 +106,24 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
   const [members, setMembers]   = useState<Member[]>(project.members);
   const [showEmoji, setShowEmoji] = useState(false);
 
-  // 새 팀원 입력 상태
-  const [newName, setNewName] = useState("");
-  const [newRoles, setNewRoles] = useState<string[]>([]);
-  const [newRoleInput, setNewRoleInput] = useState("");
-  const [showAddRow, setShowAddRow] = useState(false);
+  // 친구 초대 상태
   const [friends, setFriends] = useState<FriendDTO[]>([]);
+  const [showFriendPicker, setShowFriendPicker] = useState(false);
 
   useEffect(() => {
     if (isOpen) FriendsAPI.list().then(setFriends).catch(() => {});
   }, [isOpen]);
+
+  function addFriendAsMember(friend: FriendDTO) {
+    if (members.some((m) => m.userId === friend.user_id)) return; // 이미 추가됨
+    setMembers((prev) => [...prev, {
+      id: uid(),
+      userId: friend.user_id,
+      name: friend.name,
+      roles: ["팀원"],
+    }]);
+    setShowFriendPicker(false);
+  }
 
   useEffect(() => {
     setName(project.name);
@@ -108,24 +135,8 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
     setMembers([...project.members]);
     setShowEmoji(false);
     setColorPickerOpen(false);
-    setShowAddRow(false);
-    setNewName(""); setNewRoles([]); setNewRoleInput("");
+    setShowFriendPicker(false);
   }, [project.id, isOpen]);
-
-  function addMember() {
-    const trimmed = newName.trim();
-    if (!trimmed) { Alert.alert("오류", "이름을 입력해주세요."); return; }
-    if (newRoles.length === 0) { Alert.alert("오류", "역할을 최소 1개 선택해주세요."); return; }
-    // 친구 이름/아이디와 일치하면 실제 계정 연결 → 초대 처리
-    const matched = friends.find((f) => f.name === trimmed || f.username === trimmed);
-    setMembers((prev) => [...prev, {
-      id: uid(),
-      userId: matched?.user_id,
-      name: matched?.name ?? trimmed,
-      roles: newRoles,
-    }]);
-    setNewName(""); setNewRoles([]); setNewRoleInput(""); setShowAddRow(false);
-  }
 
   function removeMember(id: string) {
     setMembers((prev) => prev.filter((m) => m.id !== id));
@@ -133,17 +144,6 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
 
   function updateMemberRoles(id: string, roles: string[]) {
     setMembers((prev) => prev.map((m) => m.id === id ? { ...m, roles } : m));
-  }
-
-  function toggleNewRole(role: string) {
-    setNewRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
-  }
-
-  function addCustomNewRole() {
-    const trimmed = newRoleInput.trim();
-    if (!trimmed || newRoles.includes(trimmed)) { setNewRoleInput(""); return; }
-    setNewRoles(prev => [...prev, trimmed]);
-    setNewRoleInput("");
   }
 
   function handleSave() {
@@ -274,91 +274,70 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave }: P
                 <MemberRow
                   key={m.id}
                   member={m}
-                  isLast={i === members.length - 1 && !showAddRow}
+                  isLast={i === members.length - 1}
                   C={C}
                   onRolesChange={(roles) => updateMemberRoles(m.id, roles)}
                   onRemove={() => removeMember(m.id)}
                 />
               ))}
 
-              {/* 새 팀원 입력 폼 */}
-              {showAddRow && (
-                <>
-                  <View style={[styles.addRow, { borderTopColor: C.border }]}>
-                    <TextInput
-                      style={[styles.addInput, { color: C.text, borderColor: C.border, flex: 1 }]}
-                      value={newName}
-                      onChangeText={setNewName}
-                      placeholder="이름"
-                      placeholderTextColor={C.textMuted}
-                      maxLength={10}
-                    />
-                    <TouchableOpacity onPress={addMember} activeOpacity={0.7} style={styles.addConfirm}>
-                      <Icon name="add" size={20} color="#00A9EC" />
-                    </TouchableOpacity>
-                    <TouchableOpacity onPress={() => { setShowAddRow(false); setNewName(""); setNewRoles([]); setNewRoleInput(""); }}
-                      activeOpacity={0.7} style={styles.addConfirm}>
-                      <Icon name="back" size={20} color={C.textMuted} />
-                    </TouchableOpacity>
-                  </View>
-                  {/* 선택된 역할 칩들 */}
-                  {newRoles.length > 0 && (
-                    <View style={[styles.selectedRolesRow, { borderTopColor: C.border }]}>
-                      {newRoles.map(r => {
-                        const rc = ROLE_COLORS[r] ?? { bg: "#F1F5F9", color: "#64748B" };
-                        return (
-                          <TouchableOpacity key={r} onPress={() => toggleNewRole(r)} activeOpacity={0.7}
-                            style={[styles.roleTag, { backgroundColor: rc.bg }]}>
-                            <Text style={[styles.roleTagText, { color: rc.color }]}>{r}</Text>
-                            <Text style={[styles.roleTagX, { color: rc.color }]}>×</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                  {/* 직접 입력 */}
-                  <View style={[styles.customRoleRow, { borderTopColor: C.border }]}>
-                    <TextInput
-                      style={[styles.customRoleInput, { color: C.text, borderColor: C.border }]}
-                      value={newRoleInput}
-                      onChangeText={setNewRoleInput}
-                      placeholder="역할 직접 입력"
-                      placeholderTextColor={C.textMuted}
-                      maxLength={12}
-                      onSubmitEditing={addCustomNewRole}
-                    />
-                    <TouchableOpacity onPress={addCustomNewRole} activeOpacity={0.7} style={styles.addConfirm}>
-                      <Icon name="add" size={18} color="#00A9EC" />
-                    </TouchableOpacity>
-                  </View>
-                  {/* 역할 프리셋 */}
-                  <ScrollView horizontal showsHorizontalScrollIndicator={false}
-                    contentContainerStyle={[styles.presetRow, { borderTopColor: C.border }]}>
-                    {ROLE_PRESETS.map((r) => (
-                      <TouchableOpacity key={r} onPress={() => toggleNewRole(r)} activeOpacity={0.7}
-                        style={[styles.presetChip, { borderColor: C.border },
-                          newRoles.includes(r) && { backgroundColor: "#00A9EC15", borderColor: "#00A9EC" }]}>
-                        <Text style={[styles.presetText, { color: newRoles.includes(r) ? "#00A9EC" : C.textMuted }]}>{r}</Text>
-                      </TouchableOpacity>
-                    ))}
-                  </ScrollView>
-                </>
-              )}
-
-              {/* 팀원 추가 버튼 */}
-              {!showAddRow && (
-                <TouchableOpacity onPress={() => setShowAddRow(true)} activeOpacity={0.7}
-                  style={[styles.addMemberBtn, { borderTopColor: C.border }]}>
-                  <Icon name="add" size={16} color="#00A9EC" />
-                  <Text style={styles.addMemberText}>팀원 추가</Text>
-                </TouchableOpacity>
-              )}
+              {/* 친구 초대 버튼 */}
+              <TouchableOpacity onPress={() => setShowFriendPicker(true)} activeOpacity={0.7}
+                style={[styles.addMemberBtn, { borderTopColor: C.border }]}>
+                <Icon name="add" size={16} color="#7C3AED" />
+                <Text style={[styles.addMemberText, { color: "#7C3AED" }]}>친구 초대</Text>
+              </TouchableOpacity>
             </View>
+
+            {/* ── 프로젝트 삭제 (방장만) ── */}
+            {isOwner && (
+              <TouchableOpacity onPress={handleDelete} activeOpacity={0.8}
+                style={[styles.deleteBtn, { borderColor: "#FF1B1B" }]}>
+                <Text style={styles.deleteBtnText}>프로젝트 삭제</Text>
+              </TouchableOpacity>
+            )}
 
             <View style={{ height: 24 }} />
           </ScrollView>
         </KeyboardAvoidingView>
       </View>
+
+      {/* 친구 선택 모달 */}
+      <Modal visible={showFriendPicker} transparent animationType="slide" onRequestClose={() => setShowFriendPicker(false)}>
+        <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={() => setShowFriendPicker(false)}>
+          <TouchableOpacity activeOpacity={1} style={[{ position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: 420 }, { backgroundColor: C.bgCard }]}>
+            <Text style={[{ fontSize: 16, fontWeight: "700", marginBottom: 12 }, { color: C.text }]}>친구를 팀원으로 초대</Text>
+            {friends.length === 0 ? (
+              <Text style={{ color: C.textMuted, paddingVertical: 20, textAlign: "center" }}>
+                초대할 친구가 없어요. 친구를 먼저 추가해주세요.
+              </Text>
+            ) : (
+              <ScrollView style={{ maxHeight: 340 }}>
+                {friends.map((f) => {
+                  const already = members.some((m) => m.userId === f.user_id);
+                  return (
+                    <TouchableOpacity
+                      key={f.friendship_id}
+                      onPress={() => !already && addFriendAsMember(f)}
+                      activeOpacity={already ? 1 : 0.7}
+                      style={{ flexDirection: "row", alignItems: "center", paddingVertical: 12, gap: 12, opacity: already ? 0.4 : 1 }}
+                    >
+                      <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: "#7C3AED20", alignItems: "center", justifyContent: "center" }}>
+                        <Text style={{ fontSize: 16, fontWeight: "800", color: "#7C3AED" }}>{f.name.charAt(0)}</Text>
+                      </View>
+                      <View style={{ flex: 1 }}>
+                        <Text style={{ color: C.text, fontWeight: "600" }}>{f.name}</Text>
+                        <Text style={{ color: C.textMuted, fontSize: 12 }}>@{f.username}</Text>
+                      </View>
+                      {already && <Text style={{ color: C.textMuted, fontSize: 12 }}>추가됨</Text>}
+                    </TouchableOpacity>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </Modal>
   );
 }
@@ -505,6 +484,8 @@ const styles = StyleSheet.create({
   // 팀원 추가
   addMemberBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 6, paddingVertical: 13, borderTopWidth: 1 },
   addMemberText: { fontSize: 14, fontWeight: "500", color: "#00A9EC" },
+  deleteBtn: { marginTop: 24, paddingVertical: 14, borderRadius: 12, borderWidth: 1, alignItems: "center" },
+  deleteBtnText: { fontSize: 15, fontWeight: "700", color: "#FF1B1B" },
   addRow: { flexDirection: "row", alignItems: "center", paddingHorizontal: 12, paddingVertical: 10, gap: 8, borderTopWidth: 1 },
   addInput: { flex: 1, fontSize: 14, paddingHorizontal: 10, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
   addConfirm: { width: 32, height: 32, alignItems: "center", justifyContent: "center" },

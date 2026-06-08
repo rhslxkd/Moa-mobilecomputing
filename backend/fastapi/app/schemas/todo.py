@@ -29,6 +29,8 @@ class TodoResponse(BaseModel):
     project_id: Optional[str]
     project_name: Optional[str]
     assignee_member_id: Optional[str]
+    assignee_name: Optional[str] = None
+    assignee_roles: list[str] = []
     done: bool
     due_date: Optional[str]    # "YYYY-MM-DD"
     start_date: Optional[str]

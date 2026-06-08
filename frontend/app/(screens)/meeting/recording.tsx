@@ -22,7 +22,7 @@ import {
   Animated,
   Alert,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import {
@@ -32,10 +32,11 @@ import {
   setAudioModeAsync,
 } from "expo-audio";
 import { ActivityIndicator } from "react-native";
+import QRCode from "react-native-qrcode-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { MeetingAPI } from "@/services/api";
+import { MeetingAPI, MeetingAttendanceDTO } from "@/services/api";
 
 // 멤버 아바타 색상 팔레트
 const AVATAR_COLORS = ["#2563EB", "#7C3AED", "#0D9488", "#D97706", "#DC2626", "#0891B2"];
@@ -111,29 +112,10 @@ function ParticipantItem({ name, initial, speakTime, isSpeaking, color }: Partic
 export default function MeetingRecordingScreen() {
   const C = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { currentProject } = useProject();
 
   const { user } = useAuth();
-
-  // 실제 프로젝트 멤버 → 참여자 (+ 회의 연 사람 본인)
-  const memberList = currentProject?.members ?? [];
-  const meAlreadyMember = memberList.some((m) => m.userId === user?.id);
-  const participants = [
-    ...(meAlreadyMember
-      ? []
-      : [{
-          name: user?.fullName || "나",
-          initial: (user?.fullName || "나").charAt(0),
-          color: AVATAR_COLORS[0],
-          memberId: undefined as string | undefined,
-        }]),
-    ...memberList.map((m, i) => ({
-      name: m.name,
-      initial: m.name.charAt(0),
-      color: AVATAR_COLORS[(i + 1) % AVATAR_COLORS.length],
-      memberId: m.id as string | undefined,
-    })),
-  ];
 
   // 오디오 레코더
   const audioRecorder = useAudioRecorder(RecordingPresets.HIGH_QUALITY);
@@ -143,9 +125,25 @@ export default function MeetingRecordingScreen() {
   const [isRecording, setIsRecording] = useState(true);
   const [processing, setProcessing] = useState(false);
 
-  // 마운트 시 권한 요청 + 녹음 시작
+  // QR 출석
+  const [meetingId, setMeetingId] = useState<string | null>(null);
+  const [attendees, setAttendees] = useState<MeetingAttendanceDTO[]>([]);
+
+  // 마운트 시: 회의 생성(시작) → 권한 → 녹음 시작
   useEffect(() => {
+    let cancelled = false;
     (async () => {
+      try {
+        const title = new Date().toLocaleDateString("ko-KR", {
+          year: "numeric", month: "long", day: "numeric",
+        }) + " 회의";
+        const meeting = await MeetingAPI.start({ title, project_id: currentProject?.id });
+        if (cancelled) return;
+        setMeetingId(meeting.id);
+        setAttendees(meeting.attendance ?? []);
+      } catch {
+        Alert.alert("회의 시작 실패", "회의를 시작할 수 없습니다. 네트워크를 확인해주세요.");
+      }
       try {
         const status = await AudioModule.requestRecordingPermissionsAsync();
         if (!status.granted) {
@@ -159,7 +157,19 @@ export default function MeetingRecordingScreen() {
         Alert.alert("녹음 오류", "녹음을 시작할 수 없습니다.");
       }
     })();
+    return () => { cancelled = true; };
   }, []);
+
+  // 출석 현황 폴링 (4초)
+  useEffect(() => {
+    if (!meetingId || !isRecording) return;
+    const t = setInterval(() => {
+      MeetingAPI.attendance(meetingId)
+        .then((r) => setAttendees(r.attendees))
+        .catch(() => {});
+    }, 4000);
+    return () => clearInterval(t);
+  }, [meetingId, isRecording]);
 
   useEffect(() => {
     if (!isRecording) return;
@@ -178,7 +188,7 @@ export default function MeetingRecordingScreen() {
   const handleStop = () => {
     Alert.alert(
       "회의 종료",
-      "회의를 종료하고 회의록을 생성할까요?",
+      "회의를 종료할까요? 출석/사유를 확인한 뒤 회의록이 생성됩니다.",
       [
         { text: "계속 진행", style: "cancel" },
         {
@@ -186,41 +196,26 @@ export default function MeetingRecordingScreen() {
           style: "destructive",
           onPress: async () => {
             setIsRecording(false);
-            setProcessing(true);
-
             let audioUri: string | null = null;
             try {
               await audioRecorder.stop();
               audioUri = audioRecorder.uri;
             } catch {}
 
-            const title = new Date().toLocaleDateString("ko-KR", {
-              year: "numeric", month: "long", day: "numeric",
-            }) + " 회의";
-
-            try {
-              const meeting = await MeetingAPI.create({
-                title,
-                project_id: currentProject?.id,
-                duration_seconds: seconds,
-                participants: participants.map(p => ({
-                  name: p.name,
-                  speak_time_seconds: 0,
-                  member_id: p.memberId,
-                })),
-              });
-
-              // 오디오 업로드 → Whisper 전사 + GPT 요약
-              if (audioUri) {
-                await MeetingAPI.uploadAudio(meeting.id, audioUri);
-              }
+            if (!meetingId) {
+              Alert.alert("오류", "회의 정보가 없어 저장할 수 없습니다.");
               router.back();
-            } catch (e: any) {
-              Alert.alert("회의 저장", e?.message ?? "처리 중 오류가 발생했습니다. 회의는 저장되었어요.");
-              router.back();
-            } finally {
-              setProcessing(false);
+              return;
             }
+            // 사유 입력 + 마무리 화면으로 이동
+            router.replace({
+              pathname: "/(screens)/meeting/finalize",
+              params: {
+                meetingId,
+                duration: String(seconds),
+                audioUri: audioUri ?? "",
+              },
+            } as any);
           },
         },
       ]
@@ -228,9 +223,9 @@ export default function MeetingRecordingScreen() {
   };
 
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]} edges={["bottom"]}>
       {/* 헤더 */}
-      <View style={[styles.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
+      <View style={[styles.header, { backgroundColor: C.bgCard, borderBottomColor: C.border, paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => router.back()} activeOpacity={0.7} style={styles.backBtn}>
           <Text style={[styles.backArrow, { color: C.text }]}>‹</Text>
         </TouchableOpacity>
@@ -266,23 +261,40 @@ export default function MeetingRecordingScreen() {
           </View>
         </LinearGradient>
 
-        {/* ── 참여자 목록 ── */}
-        <Text style={[styles.sectionTitle, { color: C.text }]}>참여자</Text>
+        {/* ── QR 출석 ── */}
+        <View style={[styles.qrCard, { backgroundColor: C.bgCard, borderColor: C.border }]}>
+          <Text style={[styles.sectionTitle, { color: C.text, marginBottom: 4 }]}>📷 QR 출석</Text>
+          <Text style={[styles.memoText, { color: C.textMuted, textAlign: "center" }]}>
+            팀원이 이 QR을 스캔하면 출석 처리돼요. (지각 시간도 자동 기록)
+          </Text>
+          <View style={styles.qrBox}>
+            {meetingId ? (
+              <QRCode value={`moa-meeting:${meetingId}`} size={180} />
+            ) : (
+              <ActivityIndicator color={C.primary} />
+            )}
+          </View>
+        </View>
 
-        {participants.length > 0 ? (
-          participants.map((p) => (
-            <ParticipantItem
-              key={p.memberId}
-              name={p.name}
-              initial={p.initial}
-              speakTime="기록 중…"
-              isSpeaking={false}
-              color={p.color}
-            />
-          ))
+        {/* ── 출석 현황 ── */}
+        <Text style={[styles.sectionTitle, { color: C.text }]}>출석 ({attendees.length}명)</Text>
+        {attendees.length > 0 ? (
+          attendees.map((p, i) => {
+            const late = (p.late_seconds ?? 0) >= 120;
+            return (
+              <ParticipantItem
+                key={p.user_id ?? `att-${i}`}
+                name={p.name}
+                initial={p.name.charAt(0)}
+                speakTime={late ? `지각 ${Math.round((p.late_seconds ?? 0) / 60)}분` : "정시 출석"}
+                isSpeaking={false}
+                color={AVATAR_COLORS[i % AVATAR_COLORS.length]}
+              />
+            );
+          })
         ) : (
           <Text style={[styles.memoText, { color: C.textMuted, paddingHorizontal: 4 }]}>
-            등록된 팀원이 없어요. 프로젝트에 팀원을 추가해보세요.
+            아직 출석한 팀원이 없어요. QR을 보여주세요.
           </Text>
         )}
 
@@ -384,6 +396,10 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "600",
   },
+
+  // QR 카드
+  qrCard: { borderRadius: 16, borderWidth: 1, padding: 16, gap: 8, alignItems: "center" },
+  qrBox: { backgroundColor: "#fff", padding: 14, borderRadius: 12, marginTop: 6 },
 
   // 섹션
   sectionTitle: { fontSize: 16, fontWeight: "600" },

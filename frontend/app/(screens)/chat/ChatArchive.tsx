@@ -7,6 +7,7 @@ import {
   ScrollView,
   Dimensions,
   Image,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -57,7 +58,7 @@ export default function ChatArchiveScreen() {
           <Icon name="close" size={24} color="#333" />
         </TouchableOpacity>
         <Text style={styles.headerTitle}>{roomName}</Text>
-        <TouchableOpacity style={styles.headerBtn}>
+        <TouchableOpacity style={styles.headerBtn} onPress={() => Alert.alert("검색", "검색은 준비 중인 기능이에요.")}>
           <Icon name="search" size={24} color="#333" />
         </TouchableOpacity>
       </View>

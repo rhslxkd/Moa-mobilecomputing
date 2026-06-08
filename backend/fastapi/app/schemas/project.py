@@ -78,6 +78,7 @@ class ProjectUpdate(BaseModel):
 
 class ProjectResponse(BaseModel):
     id: str
+    owner_id: str
     name: str
     emoji: str
     color: str

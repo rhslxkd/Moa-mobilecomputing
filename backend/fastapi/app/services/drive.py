@@ -258,3 +258,60 @@ def delete_file(file_id: str, token: str) -> None:
     except Exception:
         pass
     supabase_admin.table("drive_files").delete().eq("id", file_id).execute()
+
+
+# ── 이동 ───────────────────────────────────────────────────
+
+def move_file(file_id: str, target_folder_id: str | None, token: str) -> FileResponse:
+    """파일을 다른 폴더로 이동. target_folder_id가 None이면 해당 컨텍스트 루트로."""
+    user = _get_user(token)
+    _get_accessible_file(file_id, user.id)
+    new_project_id = _folder_project_id(target_folder_id) if target_folder_id else None
+    if target_folder_id and not _has_project_access(new_project_id or "", user.id):
+        # 개인 폴더 대상이면 소유 확인
+        owns = (
+            supabase_admin.table("drive_folders").select("id")
+            .eq("id", target_folder_id).eq("owner_id", user.id).limit(1).execute()
+        ).data
+        if not new_project_id and not owns:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="대상 폴더에 접근할 수 없습니다.")
+    row = (
+        supabase_admin.table("drive_files")
+        .update({"folder_id": target_folder_id, "project_id": new_project_id})
+        .eq("id", file_id).execute()
+    ).data[0]
+    return _build_file(row)
+
+
+def move_folder(folder_id: str, target_folder_id: str | None, token: str) -> FolderResponse:
+    """폴더를 다른 폴더 아래로 이동. 자기 자신/하위로는 이동 불가."""
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("drive_folders").select("id, owner_id, project_id")
+        .eq("id", folder_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="폴더를 찾을 수 없습니다.")
+    f = rows[0]
+    if f["owner_id"] != user.id and not (f.get("project_id") and _has_project_access(f["project_id"], user.id)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="접근 권한이 없습니다.")
+    if target_folder_id == folder_id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="자기 자신으로 이동할 수 없습니다.")
+    # 순환 방지: target이 folder의 하위인지 확인
+    if target_folder_id:
+        cur: str | None = target_folder_id
+        while cur:
+            if cur == folder_id:
+                raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="하위 폴더로 이동할 수 없습니다.")
+            parent = (
+                supabase_admin.table("drive_folders").select("parent_id")
+                .eq("id", cur).limit(1).execute()
+            ).data
+            cur = parent[0].get("parent_id") if parent else None
+    new_project_id = _folder_project_id(target_folder_id) if target_folder_id else None
+    row = (
+        supabase_admin.table("drive_folders")
+        .update({"parent_id": target_folder_id, "project_id": new_project_id})
+        .eq("id", folder_id).execute()
+    ).data[0]
+    return _build_folder(row)

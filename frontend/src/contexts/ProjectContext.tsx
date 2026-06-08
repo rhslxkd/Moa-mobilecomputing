@@ -25,6 +25,7 @@ export interface Member {
 
 export interface Project {
   id: string;
+  ownerId: string;
   name: string;
   emoji: string;
   color: string;
@@ -57,6 +58,7 @@ interface ProjectContextType {
 function dtoToProject(dto: ProjectDTO): Project {
   return {
     id: dto.id,
+    ownerId: dto.owner_id,
     name: dto.name,
     emoji: dto.emoji,
     color: dto.color,

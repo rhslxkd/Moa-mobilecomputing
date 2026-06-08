@@ -17,7 +17,7 @@ import { SvgXml } from "react-native-svg";
 import { BlurView } from "expo-blur";
 import { useTheme, useIsDark } from "../../hooks/useTheme";
 import { useProject, type Project } from "../../contexts/ProjectContext";
-import { ChatAPI } from "../../services/api";
+import { ChatAPI, NotificationAPI } from "../../services/api";
 import { useAuth } from "../../contexts/AuthContext";
 import type { Theme } from "../../constants/theme";
 import AlarmModal from "../modals/AlarmModal";
@@ -35,6 +35,11 @@ const ALARM_INDICATED_XML = `<svg width="24" height="24" viewBox="0 0 24 24" fil
 <path fill-rule="evenodd" clip-rule="evenodd" d="M12.0003 2C12.8649 2.00003 13.6938 2.16786 14.4544 2.47363C13.9702 2.96043 13.5871 3.54724 13.3353 4.19922C12.9117 4.07037 12.4636 4.00003 12.0003 4C9.66335 4 7.69979 5.75743 7.44171 8.08008L7.18975 10.3457C7.18662 10.3739 7.18481 10.3908 7.18292 10.4072C7.03786 11.6713 6.62659 12.8909 5.97589 13.9844C5.9675 13.9985 5.95905 14.0131 5.94464 14.0371L5.36651 15C5.09305 15.4558 4.92791 15.7334 4.83038 15.9404C4.82559 15.9506 4.82178 15.9606 4.81768 15.9697C4.82803 15.971 4.83911 15.9744 4.85089 15.9756C5.07861 15.9985 5.40156 16 5.93292 16H18.0677C18.5991 16 18.922 15.9985 19.1497 15.9756C19.1611 15.9744 19.1719 15.9709 19.1819 15.9697C19.1779 15.9607 19.1749 15.9505 19.1702 15.9404C19.0727 15.7334 18.9076 15.4558 18.6341 15L18.056 14.0371C18.0416 14.0131 18.0331 13.9985 18.0247 13.9844C17.4543 13.0259 17.0675 11.9705 16.8831 10.873C17.2424 10.955 17.6162 11 18.0003 11C18.3171 11 18.6266 10.9685 18.9271 10.9121C19.0886 11.6324 19.3644 12.3239 19.7435 12.9609C19.7497 12.9713 19.7556 12.9825 19.7708 13.0078L20.3489 13.9707C20.6 14.3891 20.8292 14.7682 20.9798 15.0879C21.1279 15.4023 21.2854 15.8286 21.2093 16.3115C21.134 16.7889 20.8884 17.2229 20.5179 17.5332C20.1429 17.8471 19.6958 17.931 19.3499 17.9658C18.9983 18.0012 18.5555 18 18.0677 18H5.93292C5.44512 18 5.00231 18.0012 4.65069 17.9658C4.30485 17.931 3.85776 17.847 3.48272 17.5332C3.11215 17.2229 2.86666 16.7889 2.79132 16.3115C2.71514 15.8285 2.87272 15.4024 3.02081 15.0879C3.17141 14.7682 3.40065 14.3891 3.65167 13.9707L4.22979 13.0078C4.245 12.9825 4.25093 12.9714 4.25714 12.9609C4.76316 12.1106 5.08373 11.1627 5.19659 10.1797C5.19798 10.1676 5.19917 10.1545 5.20245 10.125L5.4544 7.85938C5.82503 4.52386 8.64426 2 12.0003 2Z" fill="COLOR"/>
 <path d="M9.10222 17.6647C9.27315 18.6215 9.64978 19.467 10.1737 20.0701C10.6976 20.6731 11.3396 21 12 21C12.6604 21 13.3024 20.6731 13.8263 20.0701C14.3502 19.467 14.7269 18.6215 14.8978 17.6647" stroke="COLOR" stroke-width="2" stroke-linecap="round"/>
 <circle cx="18" cy="6" r="2.5" fill="#FF1B1B" stroke="#FF1B1B"/>
+</svg>`;
+
+const ALARM_DEFAULT_XML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+<path d="M6.44784 7.96942C6.76219 5.14032 9.15349 3 12 3C14.8465 3 17.2378 5.14032 17.5522 7.96942L17.804 10.2356C17.8072 10.2645 17.8088 10.279 17.8104 10.2933C17.9394 11.4169 18.3051 12.5005 18.8836 13.4725C18.8909 13.4849 18.8984 13.4973 18.9133 13.5222L19.4914 14.4856C20.0159 15.3599 20.2782 15.797 20.2216 16.1559C20.1839 16.3946 20.061 16.6117 19.8757 16.7668C19.5971 17 19.0873 17 18.0678 17H5.93223C4.91268 17 4.40291 17 4.12434 16.7668C3.93897 16.6117 3.81609 16.3946 3.77841 16.1559C3.72179 15.797 3.98407 15.3599 4.50862 14.4856L5.08665 13.5222C5.10161 13.4973 5.10909 13.4849 5.11644 13.4725C5.69488 12.5005 6.06064 11.4169 6.18959 10.2933C6.19123 10.279 6.19283 10.2645 6.19604 10.2356L6.44784 7.96942Z" stroke="COLOR" stroke-width="2"/>
+<path d="M8 17C8 17.5253 8.10346 18.0454 8.30448 18.5307C8.5055 19.016 8.80014 19.457 9.17157 19.8284C9.54301 20.1999 9.98396 20.4945 10.4693 20.6955C10.9546 20.8965 11.4747 21 12 21C12.5253 21 13.0454 20.8965 13.5307 20.6955C14.016 20.4945 14.457 20.1999 14.8284 19.8284C15.1999 19.457 15.4945 19.016 15.6955 18.5307C15.8965 18.0454 16 17.5253 16 17" stroke="COLOR" stroke-width="2" stroke-linecap="round"/>
 </svg>`;
 
 const FOLDER_XML = `<svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -63,8 +68,10 @@ const TODO_ACTIVE_DEFAULT_XML = `<svg width="32" height="32" viewBox="0 0 32 32"
 function SearchIcon({ color }: { color: string }) {
   return <SvgXml xml={SEARCH_XML.replace(/COLOR/g, color)} width={22} height={22} />;
 }
-function AlarmIndicatedIcon({ color }: { color: string }) {
-  return <SvgXml xml={ALARM_INDICATED_XML.replace(/COLOR/g, color)} width={22} height={22} />;
+function AlarmIndicatedIcon({ color, showDot = true }: { color: string; showDot?: boolean }) {
+  // 읽지 않은 알림이 있으면 빨간 점 버전, 없으면 깨끗한 기본 종 (노치 없음)
+  const xml = showDot ? ALARM_INDICATED_XML : ALARM_DEFAULT_XML;
+  return <SvgXml xml={xml.replace(/COLOR/g, color)} width={22} height={22} />;
 }
 function FolderIcon({ color }: { color: string }) {
   return <SvgXml xml={FOLDER_XML.replace(/COLOR/g, color)} width={20} height={20} />;
@@ -102,11 +109,15 @@ export default function DashboardScreen() {
   useFocusEffect(
     useCallback(() => {
       loadProjects();
+      NotificationAPI.list()
+        .then((list) => setHasUnread(list.some((n) => !n.read)))
+        .catch(() => {});
     }, [loadProjects])
   );
   const displayName = user?.fullName || user?.username || "";
   const s = makeStyles(C, isDark, insets);
   const [alarmOpen, setAlarmOpen] = useState(false);
+  const [hasUnread, setHasUnread] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -162,7 +173,7 @@ export default function DashboardScreen() {
             activeOpacity={0.7}
             onPress={() => setAlarmOpen(true)}
           >
-            <AlarmIndicatedIcon color={C.textSub} />
+            <AlarmIndicatedIcon color={C.textSub} showDot={hasUnread} />
           </TouchableOpacity>
         </View>
       </View>
@@ -297,7 +308,7 @@ export default function DashboardScreen() {
                     activeOpacity={0.7}
                     onPress={() => setAlarmOpen(true)}
                   >
-                    <AlarmIndicatedIcon color={C.textSub} />
+                    <AlarmIndicatedIcon color={C.textSub} showDot={hasUnread} />
                   </TouchableOpacity>
                 </View>
               </View>

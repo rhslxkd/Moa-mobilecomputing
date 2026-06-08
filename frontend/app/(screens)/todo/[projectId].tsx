@@ -13,6 +13,8 @@ import {
   LayoutAnimation,
   Platform,
   UIManager,
+  Modal,
+  TextInput,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Svg, { Path, Polyline } from "react-native-svg";
@@ -20,6 +22,8 @@ import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import { TodoAPI } from "@/services/api";
+import Icon from "@/components/common/Icon";
+import CalendarPicker from "@/components/common/CalendarPicker";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -170,11 +174,11 @@ const calS = StyleSheet.create({
 });
 
 // ── 투두 행 ───────────────────────────────
-function TodoRow({ todo, onToggle, accent }: { todo: TodoItem; onToggle: (id: string) => void; accent: string }) {
+function TodoRow({ todo, onToggle, onLongPress, accent }: { todo: TodoItem; onToggle: (id: string) => void; onLongPress?: (id: string) => void; accent: string }) {
   const C = useTheme();
   const dday = getDday(todo.dueDate);
   return (
-    <TouchableOpacity onPress={() => onToggle(todo.id)} activeOpacity={0.7} style={[rowS.row, { borderBottomColor: C.border }]}>
+    <TouchableOpacity onPress={() => onToggle(todo.id)} onLongPress={() => onLongPress?.(todo.id)} activeOpacity={0.7} style={[rowS.row, { borderBottomColor: C.border }]}>
       <View style={[rowS.checkbox, { borderColor: todo.done ? accent : C.border, backgroundColor: todo.done ? accent : "transparent" }]}>
         {todo.done && (
           <Svg width={11} height={11} viewBox="0 0 12 12" fill="none">
@@ -201,11 +205,12 @@ const rowS = StyleSheet.create({
 });
 
 // ── 멤버 섹션 ─────────────────────────────
-function MemberSection({ member, todos, accent, onToggle }: {
+function MemberSection({ member, todos, accent, onToggle, onLongPress }: {
   member: { id: string; name: string; roles: string[] };
   todos: TodoItem[];
   accent: string;
   onToggle: (id: string) => void;
+  onLongPress?: (id: string) => void;
 }) {
   const C = useTheme();
   const [expanded, setExpanded] = useState(true);
@@ -253,7 +258,7 @@ function MemberSection({ member, todos, accent, onToggle }: {
       {/* 투두 목록 */}
       {expanded && (
         <>
-          {pending.map(t => <TodoRow key={t.id} todo={t} onToggle={onToggle} accent={accent} />)}
+          {pending.map(t => <TodoRow key={t.id} todo={t} onToggle={onToggle} onLongPress={onLongPress} accent={accent} />)}
 
           {done.length > 0 && (
             <>
@@ -261,7 +266,7 @@ function MemberSection({ member, todos, accent, onToggle }: {
                 <Text style={[memS.doneLabel, { color: C.textMuted }]}>완료 {done.length}개</Text>
                 {doneOpen ? <ChevronUp color={C.textMuted} /> : <ChevronDown color={C.textMuted} />}
               </TouchableOpacity>
-              {doneOpen && done.map(t => <TodoRow key={t.id} todo={t} onToggle={onToggle} accent={accent} />)}
+              {doneOpen && done.map(t => <TodoRow key={t.id} todo={t} onToggle={onToggle} onLongPress={onLongPress} accent={accent} />)}
             </>
           )}
 
@@ -312,25 +317,69 @@ export default function ProjectTodosScreen() {
   const [todoMap, setTodoMap] = useState<Record<string, TodoItem[]>>({});
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!projectId) return;
-      TodoAPI.listByProject(projectId).then(dtos => {
-        const map: Record<string, TodoItem[]> = {};
-        dtos.forEach(d => {
-          const key = d.assignee_member_id ?? "__unassigned__";
-          if (!map[key]) map[key] = [];
-          map[key].push({
-            id: d.id,
-            title: d.title,
-            done: d.done,
-            dueDate: d.due_date ? new Date(d.due_date) : new Date(),
-          });
+  // 수정 모달 상태
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+  const [editAssignee, setEditAssignee] = useState<string | null>(null);
+  const [editDue, setEditDue] = useState<Date>(new Date());
+  const [showEditCal, setShowEditCal] = useState(false);
+
+  const load = useCallback(() => {
+    if (!projectId) return;
+    TodoAPI.listByProject(projectId).then(dtos => {
+      const map: Record<string, TodoItem[]> = {};
+      dtos.forEach(d => {
+        const key = d.assignee_member_id ?? "__unassigned__";
+        if (!map[key]) map[key] = [];
+        map[key].push({
+          id: d.id,
+          title: d.title,
+          done: d.done,
+          dueDate: d.due_date ? new Date(d.due_date) : new Date(),
         });
-        setTodoMap(map);
-      }).catch(() => {});
-    }, [projectId])
-  );
+      });
+      setTodoMap(map);
+    }).catch(() => {});
+  }, [projectId]);
+
+  useFocusEffect(load);
+
+  const openEdit = (memberId: string, todoId: string) => {
+    const todo = (todoMap[memberId] ?? []).find(t => t.id === todoId);
+    if (!todo) return;
+    setEditId(todoId);
+    setEditTitle(todo.title);
+    setEditAssignee(memberId === "__unassigned__" ? null : memberId);
+    setEditDue(todo.dueDate);
+    setShowEditCal(false);
+  };
+
+  const toYmd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const fmtDueLabel = (d: Date) => {
+    const days = ["일", "월", "화", "수", "목", "금", "토"];
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+  };
+
+  const handleEditSave = async () => {
+    if (!editId || !editTitle.trim()) return;
+    const id = editId;
+    setEditId(null);
+    await TodoAPI.update(id, {
+      title: editTitle.trim(),
+      assignee_member_id: editAssignee ?? "",
+      due_date: toYmd(editDue),
+    }).catch(() => {});
+    load();
+  };
+
+  const handleEditDelete = async () => {
+    if (!editId) return;
+    const id = editId;
+    setEditId(null);
+    await TodoAPI.delete(id).catch(() => {});
+    load();
+  };
 
   const toggleTodo = async (memberId: string, todoId: string) => {
     setTodoMap(prev => ({
@@ -439,6 +488,7 @@ export default function ProjectTodosScreen() {
                 todos={filteredMap[member.id] ?? []}
                 accent={accent}
                 onToggle={(todoId) => toggleTodo(member.id, todoId)}
+                onLongPress={(todoId) => openEdit(member.id, todoId)}
               />
             ))}
             {(filteredMap["__unassigned__"] ?? []).length > 0 && (
@@ -448,6 +498,7 @@ export default function ProjectTodosScreen() {
                 todos={filteredMap["__unassigned__"]}
                 accent={accent}
                 onToggle={(todoId) => toggleTodo("__unassigned__", todoId)}
+                onLongPress={(todoId) => openEdit("__unassigned__", todoId)}
               />
             )}
           </>
@@ -461,9 +512,91 @@ export default function ProjectTodosScreen() {
           </View>
         )}
       </ScrollView>
+
+      {/* 수정 모달 */}
+      <Modal visible={!!editId} transparent animationType="fade" onRequestClose={() => setEditId(null)}>
+        <TouchableOpacity style={em.overlay} activeOpacity={1} onPress={() => setEditId(null)}>
+          <TouchableOpacity activeOpacity={1} style={[em.sheet, { backgroundColor: C.bgCard }]}>
+            <Text style={[em.title, { color: C.text }]}>할 일 수정</Text>
+            <TextInput
+              style={[em.input, { color: C.text, borderColor: C.border, backgroundColor: C.bg }]}
+              value={editTitle}
+              onChangeText={setEditTitle}
+              autoFocus
+            />
+
+            {/* 담당자 */}
+            <Text style={[em.label, { color: C.textMuted }]}>담당자</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
+              <TouchableOpacity
+                activeOpacity={0.7}
+                onPress={() => setEditAssignee(null)}
+                style={[em.chip, { borderColor: C.border }, !editAssignee && { backgroundColor: accent, borderColor: accent }]}
+              >
+                <Text style={[em.chipText, { color: !editAssignee ? "#fff" : C.textMuted }]}>미배정</Text>
+              </TouchableOpacity>
+              {(project?.members ?? []).map((m) => {
+                const active = editAssignee === m.id;
+                return (
+                  <TouchableOpacity
+                    key={m.id}
+                    activeOpacity={0.7}
+                    onPress={() => setEditAssignee(m.id)}
+                    style={[em.chip, { borderColor: C.border }, active && { backgroundColor: accent, borderColor: accent }]}
+                  >
+                    <Text style={[em.chipText, { color: active ? "#fff" : C.text }]}>
+                      {m.name}{m.roles?.length ? ` · ${m.roles[0]}` : ""}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+
+            {/* 마감일 */}
+            <Text style={[em.label, { color: C.textMuted }]}>마감일</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setShowEditCal(v => !v)}
+              style={[em.dueRow, { borderColor: showEditCal ? accent : C.border, backgroundColor: C.bg }]}
+            >
+              <Icon name="calendar" size={16} color={showEditCal ? accent : C.textMuted} />
+              <Text style={[em.dueText, { color: showEditCal ? accent : C.text }]}>{fmtDueLabel(editDue)}</Text>
+            </TouchableOpacity>
+            {showEditCal && (
+              <View style={[em.calWrap, { borderColor: C.border }]}>
+                <CalendarPicker selected={editDue} onSelect={(d) => { setEditDue(d); setShowEditCal(false); }} />
+              </View>
+            )}
+
+            <TouchableOpacity style={[em.saveBtn, { backgroundColor: accent }]} onPress={handleEditSave} activeOpacity={0.85}>
+              <Text style={em.saveText}>저장</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[em.delBtn, { borderColor: C.border }]} onPress={handleEditDelete} activeOpacity={0.85}>
+              <Text style={[em.delText, { color: "#DC2626" }]}>삭제</Text>
+            </TouchableOpacity>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
     </SafeAreaView>
   );
 }
+
+const em = StyleSheet.create({
+  overlay: { flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", paddingHorizontal: 24 },
+  sheet: { borderRadius: 18, padding: 20 },
+  title: { fontSize: 17, fontWeight: "700", marginBottom: 12 },
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, marginBottom: 12 },
+  label: { fontSize: 12, fontWeight: "600", marginBottom: 8 },
+  chip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
+  chipText: { fontSize: 12, fontWeight: "600" },
+  dueRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  dueText: { fontSize: 14, fontWeight: "500" },
+  calWrap: { borderWidth: 1, borderRadius: 12, padding: 8, marginBottom: 12 },
+  saveBtn: { borderRadius: 12, paddingVertical: 14, alignItems: "center", marginBottom: 8 },
+  saveText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+  delBtn: { borderRadius: 12, paddingVertical: 14, alignItems: "center", borderWidth: 1 },
+  delText: { fontSize: 15, fontWeight: "600" },
+});
 
 const s = StyleSheet.create({
   safe: { flex: 1 },

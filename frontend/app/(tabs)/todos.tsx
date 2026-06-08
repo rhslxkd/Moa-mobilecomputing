@@ -21,6 +21,7 @@ import { TodoAPI } from "@/services/api";
 import { useFocusEffect } from "expo-router";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
+import CalendarPicker from "@/components/common/CalendarPicker";
 
 if (Platform.OS === "android" && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -218,6 +219,9 @@ interface Todo {
   projectName: string;
   done: boolean;
   dueDate: string;
+  assigneeMemberId?: string;
+  assigneeName?: string;
+  assigneeRole?: string;
 }
 
 // ── 투두 아이템 ───────────────────────────
@@ -260,10 +264,17 @@ function TodoItem({ todo, onToggle, onLongPress, accentColor, isDateMatch }: {
           )}
         </TouchableOpacity>
 
-        <Text style={[todoS.title, {
-          color: todo.done ? C.textMuted : C.text,
-          textDecorationLine: todo.done ? "line-through" : "none",
-        }]} numberOfLines={1}>{todo.title}</Text>
+        <View style={{ flex: 1 }}>
+          <Text style={[todoS.title, {
+            color: todo.done ? C.textMuted : C.text,
+            textDecorationLine: todo.done ? "line-through" : "none",
+          }]} numberOfLines={1}>{todo.title}</Text>
+          {todo.assigneeName ? (
+            <Text style={[todoS.assignee, { color: C.textMuted }]} numberOfLines={1}>
+              {todo.assigneeName}{todo.assigneeRole ? ` · ${todo.assigneeRole}` : ""}
+            </Text>
+          ) : null}
+        </View>
 
         <View style={todoS.right}>
           {/* D-day 뱃지: 해당 날짜 투두에만 */}
@@ -306,7 +317,8 @@ const todoS = StyleSheet.create({
     justifyContent: "center",
     flexShrink: 0,
   },
-  title: { flex: 1, fontSize: 14, fontWeight: "500" },
+  title: { fontSize: 14, fontWeight: "500" },
+  assignee: { fontSize: 11, marginTop: 2 },
   right: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 0 },
   ddayBadge: { paddingHorizontal: 8, paddingVertical: 3, borderRadius: 20 },
   ddayText: { fontSize: 11, fontWeight: "700" },
@@ -444,6 +456,9 @@ export default function TodosScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
   const [editTitle, setEditTitle] = useState("");
+  const [editAssignee, setEditAssignee] = useState<string | null>(null);
+  const [editDue, setEditDue] = useState<Date>(new Date());
+  const [showEditCal, setShowEditCal] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -456,6 +471,9 @@ export default function TodosScreen() {
           projectName: d.project_name ?? "개인",
           done: d.done,
           dueDate: d.due_date ?? new Date().toISOString().split("T")[0],
+          assigneeMemberId: d.assignee_member_id ?? undefined,
+          assigneeName: d.assignee_name ?? undefined,
+          assigneeRole: d.assignee_roles?.[0],
         })));
       }).catch(() => {});
     }, [])
@@ -475,12 +493,41 @@ export default function TodosScreen() {
     if (!todo) return;
     setEditTarget(todo);
     setEditTitle(todo.title);
+    setEditAssignee(todo.assigneeMemberId ?? null);
+    setEditDue(todo.dueDate ? new Date(todo.dueDate) : new Date());
+    setShowEditCal(false);
   };
+
+  const fmtDueLabel = (d: Date) => {
+    const days = ["일", "월", "화", "수", "목", "금", "토"];
+    return `${d.getFullYear()}년 ${d.getMonth() + 1}월 ${d.getDate()}일 (${days[d.getDay()]})`;
+  };
+  const toYmd = (d: Date) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+  // 수정 대상 todo가 속한 프로젝트의 멤버 목록
+  const editMembers = useMemo(() => {
+    if (!editTarget || editTarget.projectId === "personal") return [];
+    return projects.find(p => p.id === editTarget.projectId)?.members ?? [];
+  }, [editTarget, projects]);
 
   const handleEditSave = async () => {
     if (!editTarget || !editTitle.trim()) return;
-    setTodos(prev => prev.map(t => t.id === editTarget.id ? { ...t, title: editTitle.trim() } : t));
-    await TodoAPI.update(editTarget.id, { title: editTitle.trim() }).catch(() => {});
+    const newMember = editMembers.find(m => m.id === editAssignee);
+    const dueYmd = toYmd(editDue);
+    setTodos(prev => prev.map(t => t.id === editTarget.id ? {
+      ...t,
+      title: editTitle.trim(),
+      dueDate: dueYmd,
+      assigneeMemberId: editAssignee ?? undefined,
+      assigneeName: newMember?.name,
+      assigneeRole: newMember?.roles?.[0],
+    } : t));
+    await TodoAPI.update(editTarget.id, {
+      title: editTitle.trim(),
+      assignee_member_id: editAssignee ?? "",
+      due_date: dueYmd,
+    }).catch(() => {});
     setEditTarget(null);
   };
 
@@ -534,6 +581,57 @@ export default function TodosScreen() {
               returnKeyType="done"
               onSubmitEditing={handleEditSave}
             />
+
+            {/* 담당자 선택 (프로젝트 할 일일 때) */}
+            {editMembers.length > 0 && (
+              <View style={{ marginBottom: 12 }}>
+                <Text style={[modalS.assigneeLabel, { color: C.textMuted }]}>담당자</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
+                  <TouchableOpacity
+                    activeOpacity={0.7}
+                    onPress={() => setEditAssignee(null)}
+                    style={[modalS.assigneeChip, { borderColor: C.border }, !editAssignee && { backgroundColor: C.primary, borderColor: C.primary }]}
+                  >
+                    <Text style={[modalS.assigneeChipText, { color: !editAssignee ? "#fff" : C.textMuted }]}>미배정</Text>
+                  </TouchableOpacity>
+                  {editMembers.map((m) => {
+                    const active = editAssignee === m.id;
+                    return (
+                      <TouchableOpacity
+                        key={m.id}
+                        activeOpacity={0.7}
+                        onPress={() => setEditAssignee(m.id)}
+                        style={[modalS.assigneeChip, { borderColor: C.border }, active && { backgroundColor: C.primary, borderColor: C.primary }]}
+                      >
+                        <Text style={[modalS.assigneeChipText, { color: active ? "#fff" : C.text }]}>
+                          {m.name}{m.roles?.length ? ` · ${m.roles[0]}` : ""}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </ScrollView>
+              </View>
+            )}
+
+            {/* 마감일 */}
+            <Text style={[modalS.assigneeLabel, { color: C.textMuted }]}>마감일</Text>
+            <TouchableOpacity
+              activeOpacity={0.7}
+              onPress={() => setShowEditCal(v => !v)}
+              style={[modalS.dueRow, { borderColor: showEditCal ? C.primary : C.border, backgroundColor: C.bg }]}
+            >
+              <Icon name="calendar" size={16} color={showEditCal ? C.primary : C.textMuted} />
+              <Text style={[modalS.dueText, { color: showEditCal ? C.primary : C.text }]}>{fmtDueLabel(editDue)}</Text>
+            </TouchableOpacity>
+            {showEditCal && (
+              <View style={[modalS.calWrap, { borderColor: C.border }]}>
+                <CalendarPicker
+                  selected={editDue}
+                  onSelect={(d) => { setEditDue(d); setShowEditCal(false); }}
+                />
+              </View>
+            )}
+
             <TouchableOpacity style={[modalS.saveBtn, { backgroundColor: C.primary }]} onPress={handleEditSave} activeOpacity={0.8}>
               <Text style={modalS.saveBtnText}>저장</Text>
             </TouchableOpacity>
@@ -689,6 +787,12 @@ const modalS = StyleSheet.create({
     gap: 12,
   },
   sheetTitle: { fontSize: 17, fontWeight: "700", marginBottom: 4 },
+  assigneeLabel: { fontSize: 12, fontWeight: "600", marginBottom: 8 },
+  assigneeChip: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 16, borderWidth: 1 },
+  assigneeChipText: { fontSize: 12, fontWeight: "600" },
+  dueRow: { flexDirection: "row", alignItems: "center", gap: 8, paddingHorizontal: 12, paddingVertical: 11, borderRadius: 10, borderWidth: 1, marginBottom: 12 },
+  dueText: { fontSize: 14, fontWeight: "500" },
+  calWrap: { borderWidth: 1, borderRadius: 12, padding: 8, marginBottom: 12 },
   input: {
     borderWidth: 1,
     borderRadius: 10,

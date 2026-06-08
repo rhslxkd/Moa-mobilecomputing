@@ -11,7 +11,7 @@
  * 등록 위치: app/_layout.tsx (screens)/qr/scan
  */
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -24,7 +24,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { CameraView, useCameraPermissions } from "expo-camera";
-import { FriendsAPI } from "@/services/api";
+import { FriendsAPI, MeetingAPI } from "@/services/api";
 
 const { width } = Dimensions.get("window");
 const QR_BOX_SIZE = width * 0.65;
@@ -58,6 +58,7 @@ function Corner({ position }: { position: "tl" | "tr" | "bl" | "br" }) {
 export default function QRScanScreen() {
   const router = useRouter();
   const [scanned, setScanned] = useState(false);
+  const scannedRef = useRef(false);   // 동기 차단(state는 비동기라 중복 발사 막지 못함)
   const [permission, requestPermission] = useCameraPermissions();
 
   useEffect(() => {
@@ -69,9 +70,33 @@ export default function QRScanScreen() {
   const handleClose = () => router.back();
 
   const handleBarcode = async ({ data }: { data: string }) => {
-    if (scanned) return;
+    if (scannedRef.current) return;   // 첫 스캔만 처리
+    scannedRef.current = true;
     setScanned(true);
-    const username = data.trim();
+    const raw = data.trim();
+
+    // 회의 출석 QR
+    if (raw.startsWith("moa-meeting:")) {
+      const meetingId = raw.slice("moa-meeting:".length);
+      try {
+        const r = await MeetingAPI.attend(meetingId);
+        const late = (r.late_seconds ?? 0) >= 120;
+        Alert.alert(
+          "출석 완료",
+          late ? `출석했어요. (지각 ${Math.round((r.late_seconds ?? 0) / 60)}분)` : "정시 출석 처리됐어요.",
+          [{ text: "확인", onPress: () => router.back() }],
+        );
+      } catch (e: any) {
+        Alert.alert("출석 실패", e?.message ?? "출석 처리에 실패했어요.", [
+          { text: "다시 스캔", onPress: () => { scannedRef.current = false; setScanned(false); } },
+          { text: "닫기", onPress: () => router.back() },
+        ]);
+      }
+      return;
+    }
+
+    // 친구 추가 QR (username)
+    const username = raw;
     try {
       await FriendsAPI.request(username);
       Alert.alert("요청 완료", `@${username}님에게 친구 요청을 보냈어요.`, [
@@ -79,7 +104,7 @@ export default function QRScanScreen() {
       ]);
     } catch (e: any) {
       Alert.alert("요청 실패", e?.message ?? "친구 요청에 실패했어요.", [
-        { text: "다시 스캔", onPress: () => setScanned(false) },
+        { text: "다시 스캔", onPress: () => { scannedRef.current = false; setScanned(false); } },
         { text: "닫기", onPress: () => router.back() },
       ]);
     }

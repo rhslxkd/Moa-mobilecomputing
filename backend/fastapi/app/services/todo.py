@@ -15,7 +15,7 @@ def _get_user(token: str):
     return resp.user
 
 
-def _build(row: dict, project_name: str | None = None) -> TodoResponse:
+def _build(row: dict, project_name: str | None = None, member: dict | None = None) -> TodoResponse:
     return TodoResponse(
         id=row["id"],
         title=row["title"],
@@ -23,11 +23,34 @@ def _build(row: dict, project_name: str | None = None) -> TodoResponse:
         project_id=row.get("project_id"),
         project_name=project_name,
         assignee_member_id=row.get("assignee_member_id"),
+        assignee_name=(member.get("name") if member else None),
+        assignee_roles=(member.get("roles") or [] if member else []),
         done=row["done"],
         due_date=row.get("due_date"),
         start_date=row.get("start_date"),
         difficulty=row.get("difficulty", 2),
     )
+
+
+def _member_map(rows: list[dict]) -> dict[str, dict]:
+    mids = {r["assignee_member_id"] for r in rows if r.get("assignee_member_id")}
+    if not mids:
+        return {}
+    ms = (
+        supabase_admin.table("project_members")
+        .select("id, name, roles").in_("id", list(mids)).execute()
+    ).data
+    return {m["id"]: m for m in ms}
+
+
+def _get_member(member_id: str | None) -> dict | None:
+    if not member_id:
+        return None
+    rows = (
+        supabase_admin.table("project_members")
+        .select("id, name, roles").eq("id", member_id).limit(1).execute()
+    ).data
+    return rows[0] if rows else None
 
 
 def _proj_map(rows: list[dict]) -> dict[str, str]:
@@ -45,24 +68,67 @@ def _proj_map(rows: list[dict]) -> dict[str, str]:
 
 def list_todos(token: str) -> list[TodoResponse]:
     user = _get_user(token)
-    rows = (
+    # 1) 내가 만든 todo
+    own = (
         supabase_admin.table("todos")
         .select("*")
         .eq("owner_id", user.id)
         .order("created_at", desc=True)
         .execute()
     ).data
+
+    # 2) 내가 속한(방장/수락멤버) 프로젝트들의 todo도 포함
+    owned_pj = (
+        supabase_admin.table("projects").select("id").eq("owner_id", user.id).execute()
+    ).data
+    member_pj = (
+        supabase_admin.table("project_members").select("project_id")
+        .eq("user_id", user.id).eq("status", "accepted").execute()
+    ).data
+    pj_ids = {p["id"] for p in owned_pj} | {m["project_id"] for m in member_pj if m.get("project_id")}
+
+    rows_by_id = {r["id"]: r for r in own}
+    if pj_ids:
+        proj_todos = (
+            supabase_admin.table("todos").select("*")
+            .in_("project_id", list(pj_ids))
+            .order("created_at", desc=True)
+            .execute()
+        ).data
+        for r in proj_todos:
+            rows_by_id[r["id"]] = r
+
+    rows = list(rows_by_id.values())
     pm = _proj_map(rows)
-    return [_build(r, pm.get(r.get("project_id", ""))) for r in rows]
+    mm = _member_map(rows)
+    return [_build(r, pm.get(r.get("project_id", "")), mm.get(r.get("assignee_member_id", ""))) for r in rows]
+
+
+def _has_project_access(project_id: str, user_id: str) -> bool:
+    """owner이거나 수락된 멤버면 프로젝트 todo 접근 가능."""
+    if (
+        supabase_admin.table("projects").select("id")
+        .eq("id", project_id).eq("owner_id", user_id).limit(1).execute()
+    ).data:
+        return True
+    if (
+        supabase_admin.table("project_members").select("id")
+        .eq("project_id", project_id).eq("user_id", user_id).eq("status", "accepted")
+        .limit(1).execute()
+    ).data:
+        return True
+    return False
 
 
 def list_project_todos(project_id: str, token: str) -> list[TodoResponse]:
     user = _get_user(token)
+    # 프로젝트 멤버/방장이면 전체 todo 공유, 아니면 빈 목록
+    if not _has_project_access(project_id, user.id):
+        return []
     rows = (
         supabase_admin.table("todos")
         .select("*")
         .eq("project_id", project_id)
-        .eq("owner_id", user.id)
         .order("created_at", desc=True)
         .execute()
     ).data
@@ -74,7 +140,8 @@ def list_project_todos(project_id: str, token: str) -> list[TodoResponse]:
         .execute()
     ).data
     proj_name = projs[0]["name"] if projs else None
-    return [_build(r, proj_name) for r in rows]
+    mm = _member_map(rows)
+    return [_build(r, proj_name, mm.get(r.get("assignee_member_id", ""))) for r in rows]
 
 
 def create_todo(req: TodoCreate, token: str) -> TodoResponse:
@@ -111,7 +178,7 @@ def create_todo(req: TodoCreate, token: str) -> TodoResponse:
         ).data
         proj_name = projs[0]["name"] if projs else None
 
-    return _build(row, proj_name)
+    return _build(row, proj_name, _get_member(row.get("assignee_member_id")))
 
 
 def _get_owned_todo(todo_id: str, user_id: str) -> dict:
@@ -128,9 +195,23 @@ def _get_owned_todo(todo_id: str, user_id: str) -> dict:
     return rows[0]
 
 
+def _get_editable_todo(todo_id: str, user_id: str) -> dict:
+    """작성자 본인이거나 같은 프로젝트 멤버면 수정/삭제 가능."""
+    rows = (
+        supabase_admin.table("todos").select("*").eq("id", todo_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="할 일을 찾을 수 없습니다.")
+    row = rows[0]
+    if row.get("owner_id") != user_id:
+        if not (row.get("project_id") and _has_project_access(row["project_id"], user_id)):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="권한이 없습니다.")
+    return row
+
+
 def update_todo(todo_id: str, req: TodoUpdate, token: str) -> TodoResponse:
     user = _get_user(token)
-    _get_owned_todo(todo_id, user.id)
+    _get_editable_todo(todo_id, user.id)
 
     patch: dict = {}
     if req.title is not None:
@@ -138,7 +219,8 @@ def update_todo(todo_id: str, req: TodoUpdate, token: str) -> TodoResponse:
     if req.description is not None:
         patch["description"] = req.description
     if req.assignee_member_id is not None:
-        patch["assignee_member_id"] = req.assignee_member_id
+        # 빈 문자열이면 미배정(null)으로 해제
+        patch["assignee_member_id"] = req.assignee_member_id or None
     if req.due_date is not None:
         patch["due_date"] = req.due_date
     if req.start_date is not None:
@@ -151,7 +233,9 @@ def update_todo(todo_id: str, req: TodoUpdate, token: str) -> TodoResponse:
     if patch:
         supabase_admin.table("todos").update(patch).eq("id", todo_id).execute()
 
-    row = _get_owned_todo(todo_id, user.id)
+    row = (
+        supabase_admin.table("todos").select("*").eq("id", todo_id).limit(1).execute()
+    ).data[0]
     proj_name = None
     if row.get("project_id"):
         projs = (
@@ -162,14 +246,25 @@ def update_todo(todo_id: str, req: TodoUpdate, token: str) -> TodoResponse:
             .execute()
         ).data
         proj_name = projs[0]["name"] if projs else None
-    return _build(row, proj_name)
+    return _build(row, proj_name, _get_member(row.get("assignee_member_id")))
 
 
 def toggle_done(todo_id: str, token: str) -> TodoResponse:
     user = _get_user(token)
-    row = _get_owned_todo(todo_id, user.id)
+    rows = (
+        supabase_admin.table("todos").select("*").eq("id", todo_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="할 일을 찾을 수 없습니다.")
+    row = rows[0]
+    # 본인 소유거나 같은 프로젝트 멤버면 토글 허용
+    if row.get("owner_id") != user.id:
+        if not (row.get("project_id") and _has_project_access(row["project_id"], user.id)):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="권한이 없습니다.")
     supabase_admin.table("todos").update({"done": not row["done"]}).eq("id", todo_id).execute()
-    updated = _get_owned_todo(todo_id, user.id)
+    updated = (
+        supabase_admin.table("todos").select("*").eq("id", todo_id).limit(1).execute()
+    ).data[0]
     proj_name = None
     if updated.get("project_id"):
         projs = (
@@ -180,10 +275,10 @@ def toggle_done(todo_id: str, token: str) -> TodoResponse:
             .execute()
         ).data
         proj_name = projs[0]["name"] if projs else None
-    return _build(updated, proj_name)
+    return _build(updated, proj_name, _get_member(updated.get("assignee_member_id")))
 
 
 def delete_todo(todo_id: str, token: str) -> None:
     user = _get_user(token)
-    _get_owned_todo(todo_id, user.id)
+    _get_editable_todo(todo_id, user.id)
     supabase_admin.table("todos").delete().eq("id", todo_id).execute()

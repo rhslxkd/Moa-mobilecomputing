@@ -82,6 +82,7 @@ export default function ReportScreen() {
   const [members, setMembers] = useState<MemberReport[]>([]);
   const [meetingCount, setMeetingCount] = useState(0);
   const [overallComment, setOverallComment] = useState<string | null>(null);
+  const [todoStats, setTodoStats] = useState({ total: 0, done: 0, rate: 0 });
 
   useFocusEffect(
     useCallback(() => {
@@ -98,6 +99,7 @@ export default function ReportScreen() {
         })));
         setMeetingCount(r.meeting_count);
         setOverallComment(r.overall_comment);
+        setTodoStats({ total: r.total_todos, done: r.done_todos, rate: r.completion_rate });
       }).catch(() => {});
     }, [projectId])
   );
@@ -108,6 +110,12 @@ export default function ReportScreen() {
     ? Math.round(members.reduce((s, m) => s + m.score, 0) / members.length)
     : 0;
   const myRank = 1;
+
+  // 미배정 할 일 = 전체 - 멤버 합
+  const assignedTotal = members.reduce((s, m) => s + m.todosTotal, 0);
+  const assignedDone = members.reduce((s, m) => s + m.todosDone, 0);
+  const unassignedTotal = Math.max(0, todoStats.total - assignedTotal);
+  const unassignedDone = Math.max(0, todoStats.done - assignedDone);
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top", "bottom"]}>
@@ -173,6 +181,50 @@ export default function ReportScreen() {
               <ContribBar key={member.name} member={member} accent={project.color} rank={idx} />
             ))}
           </View>
+        </View>
+
+        {/* Todo 현황 */}
+        <View style={[s.contentCard, { backgroundColor: C.bgCard, borderColor: C.border, marginTop: 14 }]}>
+          <View style={s.todoHeaderRow}>
+            <Text style={[s.contentTitle, { color: C.text }]}>📋 Todo 현황</Text>
+            <Text style={[s.todoOverall, { color: C.textMuted }]}>
+              전체 {todoStats.total}개 중 {todoStats.done}개 완료 · {todoStats.rate}%
+            </Text>
+          </View>
+          {/* 전체 진행 바 */}
+          <View style={[s.todoTrack, { backgroundColor: C.bgMuted }]}>
+            <View style={[s.todoFill, { width: `${todoStats.rate}%` as any, backgroundColor: project.color }]} />
+          </View>
+          {/* 멤버별 진행 */}
+          <View style={{ gap: 10, marginTop: 6 }}>
+            {members.map((m) => {
+              const pct = m.todosTotal > 0 ? Math.round((m.todosDone / m.todosTotal) * 100) : 0;
+              return (
+                <View key={m.name} style={s.todoMemberRow}>
+                  <Text style={[s.todoMemberName, { color: C.text }]} numberOfLines={1}>{m.name}</Text>
+                  <View style={[s.todoTrack, { flex: 1, backgroundColor: C.bgMuted }]}>
+                    <View style={[s.todoFill, { width: `${pct}%` as any, backgroundColor: project.color }]} />
+                  </View>
+                  <Text style={[s.todoMemberCount, { color: C.textMuted }]}>{m.todosDone}/{m.todosTotal}</Text>
+                </View>
+              );
+            })}
+            {/* 미배정 (담당자 없는 할 일) */}
+            {unassignedTotal > 0 && (
+              <View style={s.todoMemberRow}>
+                <Text style={[s.todoMemberName, { color: C.textMuted }]} numberOfLines={1}>미배정</Text>
+                <View style={[s.todoTrack, { flex: 1, backgroundColor: C.bgMuted }]}>
+                  <View style={[s.todoFill, { width: `${unassignedTotal > 0 ? Math.round((unassignedDone / unassignedTotal) * 100) : 0}%` as any, backgroundColor: C.textMuted }]} />
+                </View>
+                <Text style={[s.todoMemberCount, { color: C.textMuted }]}>{unassignedDone}/{unassignedTotal}</Text>
+              </View>
+            )}
+          </View>
+          {unassignedTotal > 0 && (
+            <Text style={[s.todoHint, { color: C.textMuted }]}>
+              담당자 없는 할 일 {unassignedTotal}개 — To-Do에서 길게 눌러 담당자를 지정하면 기여도에 반영돼요.
+            </Text>
+          )}
         </View>
 
         {/* AI 종합 평가 */}
@@ -298,6 +350,15 @@ const s = StyleSheet.create({
   barTrack: { flex: 1, height: 8, borderRadius: 4, overflow: "hidden" },
   barFill: { height: "100%", borderRadius: 4 },
   contribPct: { fontSize: 12, fontWeight: "700", width: 40, textAlign: "right" },
+
+  todoHeaderRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap" },
+  todoOverall: { fontSize: 12, fontWeight: "500" },
+  todoTrack: { height: 8, borderRadius: 4, overflow: "hidden", marginTop: 4 },
+  todoFill: { height: "100%", borderRadius: 4 },
+  todoMemberRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  todoMemberName: { fontSize: 13, fontWeight: "600", width: 70 },
+  todoMemberCount: { fontSize: 12, fontWeight: "600", width: 40, textAlign: "right" },
+  todoHint: { fontSize: 11, lineHeight: 16, marginTop: 8 },
 
   aiOverall: { fontSize: 14, lineHeight: 22 },
   aiCommentRow: { flexDirection: "row", alignItems: "flex-start", gap: 10 },

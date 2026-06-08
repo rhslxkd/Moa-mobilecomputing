@@ -43,7 +43,7 @@ export default function ProjectDetailScreen() {
   const C = useTheme();
   const router = useRouter();
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
-  const { projects, setCurrentProject, updateProject } = useProject();
+  const { projects, setCurrentProject, updateProject, deleteProject } = useProject();
   const [activeTab, setActiveTab] = useState<Tab>("overview");
   const [editOpen, setEditOpen] = useState(false);
 
@@ -169,6 +169,11 @@ export default function ProjectDetailScreen() {
         onClose={() => setEditOpen(false)}
         onSave={(updated) => {
           updateProject(updated);
+        }}
+        onDelete={async (id) => {
+          await deleteProject(id).catch(() => {});
+          setEditOpen(false);
+          router.replace("/(tabs)");
         }}
       />
     </SafeAreaView>

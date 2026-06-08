@@ -375,36 +375,36 @@ export default function DriveScreen() {
     : `폴더 · ${filter}`;
 
   return (
-    <SafeAreaView style={[s.safe, { backgroundColor: "#F1F1F5" }]} edges={["top"]}>
+    <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
       {/* ── 헤더 ── */}
-      <View style={[s.header, { backgroundColor: "#FFFFFF", borderBottomColor: "#EEEEEE" }]}>
+      <View style={[s.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
         <TouchableOpacity onPress={() => { if (isSelecting) setSelected(new Set()); else router.back(); }} style={s.iconBtn} activeOpacity={0.7}>
-          <Icon name="back" size={22} color="#111111" />
+          <Icon name="back" size={22} color={C.text} />
         </TouchableOpacity>
         <View style={s.headerCenter}>
           <MoaLogo size={24} variant="primary" />
-          <Text style={s.headerTitle}>{headerTitle}</Text>
+          <Text style={[s.headerTitle, { color: C.text }]}>{headerTitle}</Text>
         </View>
         <View style={s.headerRight}>
           {isSelecting ? (
             <>
               <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => setDownloadVisible(true)}>
-                <DownloadIcon color="#333333" />
+                <DownloadIcon color={C.textSub} />
               </TouchableOpacity>
               <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => setCtxVisible(true)}>
-                <Icon name="option" size={22} color="#333333" />
+                <Icon name="option" size={22} color={C.textSub} />
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7}>
-                <SearchIcon color="#333333" />
+              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => Alert.alert("검색", "폴더 검색은 준비 중인 기능이에요.")}>
+                <SearchIcon color={C.textSub} />
               </TouchableOpacity>
-              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7}>
-                <ExportIcon color="#333333" />
+              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => Alert.alert("내보내기", "내보내기는 준비 중인 기능이에요.")}>
+                <ExportIcon color={C.textSub} />
               </TouchableOpacity>
               <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => setNewFolderVisible(true)}>
-                <Icon name="add" size={22} color="#333333" />
+                <Icon name="add" size={22} color={C.textSub} />
               </TouchableOpacity>
             </>
           )}
@@ -436,10 +436,10 @@ export default function DriveScreen() {
 
           {/* 정렬/필터 아이콘 */}
           <TouchableOpacity style={s.toolBtn} activeOpacity={0.7}>
-            <SortIcon color="#777777" />
+            <SortIcon color={C.textMuted} />
           </TouchableOpacity>
           <TouchableOpacity style={s.toolBtn} activeOpacity={0.7} onPress={() => setFilterMenuOpen(v => !v)}>
-            <FilterIcon color={filterMenuOpen ? "#00A9EC" : "#777777"} />
+            <FilterIcon color={filterMenuOpen ? "#00A9EC" : C.textMuted} />
           </TouchableOpacity>
 
           {/* 필터 드롭다운 */}
@@ -481,9 +481,9 @@ export default function DriveScreen() {
         >
           {allFolders.length === 0 ? (
             <View style={s.emptyWrap}>
-              <FolderSvg color="#CCCCCC" size={72} />
-              <Text style={[s.emptyTitle, { color: "#111111" }]}>폴더가 없어요</Text>
-              <Text style={s.emptyDesc}>+ 버튼을 눌러 새 폴더를 만들어보세요</Text>
+              <FolderSvg color={C.textMuted} size={72} />
+              <Text style={[s.emptyTitle, { color: C.text }]}>폴더가 없어요</Text>
+              <Text style={[s.emptyDesc, { color: C.textMuted }]}>+ 버튼을 눌러 새 폴더를 만들어보세요</Text>
             </View>
           ) : viewMode === "grid" ? (
             <View style={s.grid}>
@@ -499,8 +499,8 @@ export default function DriveScreen() {
                     onLongPress={() => toggleSelect(folder.id)}
                   >
                     <FolderSvg color={folderColor} size={ITEM_W * 0.75} />
-                    <Text style={s.folderName} numberOfLines={2}>{folder.name}</Text>
-                    <Text style={s.folderCount}>{folder.count}개의 항목</Text>
+                    <Text style={[s.folderName, { color: C.text }]} numberOfLines={2}>{folder.name}</Text>
+                    <Text style={[s.folderCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -512,18 +512,18 @@ export default function DriveScreen() {
               return (
                 <TouchableOpacity
                   key={folder.id}
-                  style={[s.listRow, { backgroundColor: "#FFFFFF" }, isSelected && { backgroundColor: "#EEF7FF" }]}
+                  style={[s.listRow, { backgroundColor: C.bgCard }, isSelected && { backgroundColor: C.primary + "1A" }]}
                   activeOpacity={0.7}
                   onPress={() => handleFolderPress(folder.id, folder.name, folder.isPersonal)}
                   onLongPress={() => toggleSelect(folder.id)}
                 >
                   <FolderSvg color={folderColor} size={44} />
                   <View style={{ flex: 1 }}>
-                    <Text style={s.listName} numberOfLines={1}>{folder.name}</Text>
-                    <Text style={s.listCount}>{folder.count}개의 항목</Text>
+                    <Text style={[s.listName, { color: C.text }]} numberOfLines={1}>{folder.name}</Text>
+                    <Text style={[s.listCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>
                   </View>
                   <TouchableOpacity style={s.listActionBtn} activeOpacity={0.7} onPress={() => Alert.alert("다운로드", "파일을 다운로드합니다.")}>
-                    <DownloadIcon color="#999999" />
+                    <DownloadIcon color={C.textMuted} />
                   </TouchableOpacity>
                 </TouchableOpacity>
               );

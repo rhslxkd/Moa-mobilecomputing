@@ -12,8 +12,9 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
+  Share,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { useFocusEffect } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -92,6 +93,7 @@ function MeetingHistoryItem({ meeting, onOption }: MeetingHistoryItemProps) {
 export default function MeetingScreen() {
   const C = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { currentProject } = useProject();
   const [meetings, setMeetings] = useState<MeetingDTO[]>([]);
   const [optionOpen, setOptionOpen] = useState(false);
@@ -111,10 +113,31 @@ export default function MeetingScreen() {
     setOptionOpen(false);
   };
 
+  const selectedMeeting = meetings.find(m => m.id === selectedId) ?? null;
+
+  const handleView = () => {
+    if (!selectedId) return;
+    setOptionOpen(false);
+    router.push(`/(screens)/meeting/${selectedId}` as any);
+  };
+
+  const handleShare = async () => {
+    if (!selectedMeeting) return;
+    const lines = selectedMeeting.summary.length > 0
+      ? selectedMeeting.summary.map(l => `• ${l}`).join("\n")
+      : (selectedMeeting.transcript ?? "요약이 없습니다.");
+    try {
+      await Share.share({
+        title: selectedMeeting.title,
+        message: `[${selectedMeeting.title}]\n${formatDate(selectedMeeting.created_at)}\n\n${lines}`,
+      });
+    } catch {}
+  };
+
   return (
-    <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]}>
+    <SafeAreaView style={[styles.safe, { backgroundColor: C.bg }]} edges={["bottom"]}>
       {/* 헤더 */}
-      <View style={[styles.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
+      <View style={[styles.header, { backgroundColor: C.bgCard, borderBottomColor: C.border, paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => router.back()} style={styles.iconBtn} activeOpacity={0.7}>
           <Icon name="back" size={22} color={C.text} />
         </TouchableOpacity>
@@ -148,6 +171,16 @@ export default function MeetingScreen() {
           </LinearGradient>
         </TouchableOpacity>
 
+        {/* ── QR 출석 버튼 ── */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => router.push("/(screens)/qr/scan" as any)}
+          style={[styles.attendBtn, { borderColor: C.primary, backgroundColor: C.primary + "10" }]}
+        >
+          <Icon name="camera" size={20} color={C.primary} />
+          <Text style={[styles.attendText, { color: C.primary }]}>QR 스캔하고 회의 출석하기</Text>
+        </TouchableOpacity>
+
         {/* ── 지난 회의 ── */}
         <Text style={[styles.sectionTitle, { color: C.text }]}>지난 회의</Text>
 
@@ -171,8 +204,9 @@ export default function MeetingScreen() {
         onClose={() => { setOptionOpen(false); setSelectedId(null); }}
         title="회의 옵션"
         options={MEETING_OPTIONS(
-          () => Alert.alert("회의록", "회의록을 엽니다."),
+          handleView,
           handleDelete,
+          handleShare,
         )}
       />
     </SafeAreaView>
@@ -231,6 +265,8 @@ const styles = StyleSheet.create({
   },
 
   sectionTitle: { fontSize: 16, fontWeight: "600" },
+  attendBtn: { flexDirection: "row", alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 13, borderRadius: 14, borderWidth: 1.5 },
+  attendText: { fontSize: 14, fontWeight: "700" },
   historyItem: {
     borderRadius: 14,
     borderWidth: 1,

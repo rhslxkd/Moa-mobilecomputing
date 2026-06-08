@@ -1,10 +1,15 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+from pydantic import BaseModel
 from app.schemas.drive import FolderResponse, FileResponse, FolderCreateBody
 from app.routers.auth import bearer_token
 import app.services.drive as drive_svc
 
 router = APIRouter(prefix="/drive", tags=["drive"])
+
+
+class MoveBody(BaseModel):
+    target_folder_id: Optional[str] = None
 
 
 # ── 폴더 ───────────────────────────────────────────────────
@@ -26,6 +31,11 @@ def create_folder(req: FolderCreateBody, token: str = Depends(bearer_token)):
 @router.delete("/folders/{folder_id}", status_code=204)
 def delete_folder(folder_id: str, token: str = Depends(bearer_token)):
     drive_svc.delete_folder(folder_id, token)
+
+
+@router.post("/folders/{folder_id}/move", response_model=FolderResponse)
+def move_folder(folder_id: str, body: MoveBody, token: str = Depends(bearer_token)):
+    return drive_svc.move_folder(folder_id, body.target_folder_id, token)
 
 
 # ── 파일 ───────────────────────────────────────────────────
@@ -60,3 +70,8 @@ def download_file(file_id: str, token: str = Depends(bearer_token)):
 @router.delete("/files/{file_id}", status_code=204)
 def delete_file(file_id: str, token: str = Depends(bearer_token)):
     drive_svc.delete_file(file_id, token)
+
+
+@router.post("/files/{file_id}/move", response_model=FileResponse)
+def move_file(file_id: str, body: MoveBody, token: str = Depends(bearer_token)):
+    return drive_svc.move_file(file_id, body.target_folder_id, token)

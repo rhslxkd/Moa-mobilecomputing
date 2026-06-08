@@ -312,7 +312,7 @@ export default function ChatScreen() {
           >
             <Icon name="add" size={24} color={C.text} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7}>
+          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => router.push('/(screens)/settings')}>
             <Icon name="settings" size={24} color={C.text} />
           </TouchableOpacity>
         </View>

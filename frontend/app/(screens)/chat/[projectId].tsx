@@ -10,6 +10,7 @@ import {
   Platform,
   Dimensions,
   Alert,
+  Modal,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
@@ -17,7 +18,8 @@ import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import Icon from "@/components/common/Icon";
 import ChatBox from "@/components/chat/ChatBox";
-import { ChatAPI, MessageDTO } from "@/services/api";
+import { NoticeModal, PollModal } from "@/components/chat/ChatComposers";
+import { ChatAPI, MessageDTO, NoticeDTO, PollDTO } from "@/services/api";
 import { supabase } from "@/lib/supabase";
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
@@ -44,36 +46,74 @@ function fmtTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("ko-KR", { hour: "numeric", minute: "2-digit", hour12: true });
 }
 
-const PINNED_ITEMS = [
-  { type: "공지", icon: "📣", title: "공지 제목", desc: "공지내용공지내용공지내용공지내용공지내용공지내용공지내용공지내용..." },
-  { type: "투표", icon: "☑️", title: "투표 제목", desc: "투표가 진행 중입니다. 참여해주세요." },
-  { type: "일정", icon: "📅", title: "일정 조율 제목", desc: "일정 조율이 진행 중입니다. 참여해주세요." },
-];
-
-function PinnedCards() {
-  const [dismissed, setDismissed] = useState<number[]>([]);
-  const visible = PINNED_ITEMS.filter((_, i) => !dismissed.includes(i));
-  if (visible.length === 0) return null;
+function PinnedCards({ notices, polls, onDeleteNotice, onVote, onDeletePoll }: {
+  notices: NoticeDTO[];
+  polls: PollDTO[];
+  onDeleteNotice: (id: string) => void;
+  onVote: (pollId: string, optionIndex: number) => void;
+  onDeletePoll: (id: string) => void;
+}) {
+  if (notices.length === 0 && polls.length === 0) return null;
   return (
     <View style={{ backgroundColor: "#F9FAFB", paddingVertical: 8, gap: 6, paddingHorizontal: 12 }}>
-      {visible.map((item, idx) => {
-        const origIdx = PINNED_ITEMS.indexOf(item);
+      {/* 공지 (최신 1개만) */}
+      {notices.slice(0, 1).map((n) => (
+        <View key={n.id} style={pinnedStyles.card}>
+          <Text style={pinnedStyles.icon}>📣</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={pinnedStyles.title}>공지 · {n.author_name}</Text>
+            <Text style={pinnedStyles.desc} numberOfLines={2}>{n.content}</Text>
+          </View>
+          <TouchableOpacity onPress={() => onDeleteNotice(n.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+            <Text style={pinnedStyles.close}>×</Text>
+          </TouchableOpacity>
+        </View>
+      ))}
+
+      {/* 투표 (진행 중) */}
+      {polls.map((p) => {
+        const max = Math.max(1, ...p.counts);
         return (
-          <View key={origIdx} style={pinnedStyles.card}>
-            <Text style={pinnedStyles.icon}>{item.icon}</Text>
-            <View style={{ flex: 1 }}>
-              <Text style={pinnedStyles.title}>{item.title}</Text>
-              <Text style={pinnedStyles.desc} numberOfLines={1}>{item.desc}</Text>
+          <View key={p.id} style={pinnedStyles.card}>
+            <View style={{ flex: 1, gap: 6 }}>
+              <View style={{ flexDirection: "row", alignItems: "center" }}>
+                <Text style={pinnedStyles.icon}>☑️ </Text>
+                <Text style={[pinnedStyles.title, { flex: 1 }]} numberOfLines={1}>{p.question}</Text>
+                <TouchableOpacity onPress={() => onDeletePoll(p.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                  <Text style={pinnedStyles.close}>×</Text>
+                </TouchableOpacity>
+              </View>
+              {p.options.map((opt, i) => {
+                const cnt = p.counts[i] ?? 0;
+                const pct = p.total_votes > 0 ? Math.round((cnt / p.total_votes) * 100) : 0;
+                const mine = p.my_vote === i;
+                return (
+                  <TouchableOpacity key={i} activeOpacity={0.7} onPress={() => onVote(p.id, i)}
+                    style={pollStyles.option}>
+                    <View style={[pollStyles.optionFill, { width: `${pct}%`, backgroundColor: mine ? "#00A9EC30" : "#E5E7EB" }]} />
+                    <Text style={[pollStyles.optionLabel, mine && { fontWeight: "700", color: "#00A9EC" }]}>
+                      {mine ? "✓ " : ""}{opt}
+                    </Text>
+                    <Text style={pollStyles.optionCount}>{cnt}표 · {pct}%</Text>
+                  </TouchableOpacity>
+                );
+              })}
+              <Text style={pollStyles.totalText}>{p.author_name} · 총 {p.total_votes}표</Text>
             </View>
-            <TouchableOpacity onPress={() => setDismissed(prev => [...prev, origIdx])} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-              <Text style={pinnedStyles.close}>×</Text>
-            </TouchableOpacity>
           </View>
         );
       })}
     </View>
   );
 }
+
+const pollStyles = StyleSheet.create({
+  option: { position: "relative", justifyContent: "center", borderRadius: 8, overflow: "hidden", borderWidth: StyleSheet.hairlineWidth, borderColor: "#E5E7EB", minHeight: 34, paddingHorizontal: 10 },
+  optionFill: { position: "absolute", left: 0, top: 0, bottom: 0 },
+  optionLabel: { fontSize: 13, color: "#111", paddingVertical: 7 },
+  optionCount: { position: "absolute", right: 10, fontSize: 11, color: "#6B7280" },
+  totalText: { fontSize: 11, color: "#9CA3AF", marginTop: 2 },
+});
 
 const pinnedStyles = StyleSheet.create({
   card: {
@@ -105,6 +145,32 @@ export default function ChatDetailScreen() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
+
+  // 공지 / 투표
+  const [notices, setNotices] = useState<NoticeDTO[]>([]);
+  const [polls, setPolls] = useState<PollDTO[]>([]);
+  const [noticeModalOpen, setNoticeModalOpen] = useState(false);
+  const [pollModalOpen, setPollModalOpen] = useState(false);
+
+  const loadPinned = useCallback(() => {
+    if (!roomId) return;
+    ChatAPI.listNotices(roomId).then(setNotices).catch(() => {});
+    ChatAPI.listPolls(roomId).then(setPolls).catch(() => {});
+  }, [roomId]);
+
+  useEffect(() => { loadPinned(); }, [loadPinned]);
+
+  const handleVote = (pollId: string, optionIndex: number) => {
+    ChatAPI.votePoll(pollId, optionIndex)
+      .then((updated) => setPolls((prev) => prev.map((p) => p.id === pollId ? updated : p)))
+      .catch(() => {});
+  };
+  const handleDeleteNotice = (id: string) => {
+    ChatAPI.deleteNotice(id).then(() => setNotices((prev) => prev.filter((n) => n.id !== id))).catch(() => {});
+  };
+  const handleDeletePoll = (id: string) => {
+    ChatAPI.deletePoll(id).then(() => setPolls((prev) => prev.filter((p) => p.id !== id))).catch(() => {});
+  };
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchText, setSearchText] = useState("");
   const listRef = useRef<FlatList>(null);
@@ -300,8 +366,14 @@ export default function ChatDetailScreen() {
           </View>
         )}
 
-        {/* 공지/투표/일정 알림 카드 */}
-        <PinnedCards />
+        {/* 공지/투표 알림 카드 */}
+        <PinnedCards
+          notices={notices}
+          polls={polls}
+          onDeleteNotice={handleDeleteNotice}
+          onVote={handleVote}
+          onDeletePoll={handleDeletePoll}
+        />
 
         {/* 메시지 리스트 */}
         <FlatList
@@ -334,7 +406,8 @@ export default function ChatDetailScreen() {
               <PlusMenuItem icon="camera" label="카메라" onPress={pickCamera} />
               <PlusMenuItem icon="photo" label="사진" onPress={pickPhoto} />
               <PlusMenuItem icon="file" label="파일" onPress={pickFile} />
-              <PlusMenuItem icon="mic" label="녹음" onPress={() => setShowPlusMenu(false)} />
+              <PlusMenuItem icon="announcement" label="공지" onPress={() => { setShowPlusMenu(false); setNoticeModalOpen(true); }} />
+              <PlusMenuItem icon="vote" label="투표" onPress={() => { setShowPlusMenu(false); setPollModalOpen(true); }} />
             </View>
           </View>
         )}
@@ -369,6 +442,27 @@ export default function ChatDetailScreen() {
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      <NoticeModal
+        visible={noticeModalOpen}
+        onClose={() => setNoticeModalOpen(false)}
+        onSubmit={(content) => {
+          ChatAPI.createNotice(roomId, content)
+            .then((n) => setNotices((prev) => [n, ...prev]))
+            .catch(() => {});
+          setNoticeModalOpen(false);
+        }}
+      />
+      <PollModal
+        visible={pollModalOpen}
+        onClose={() => setPollModalOpen(false)}
+        onSubmit={(question, options) => {
+          ChatAPI.createPoll(roomId, question, options)
+            .then((p) => setPolls((prev) => [p, ...prev]))
+            .catch(() => {});
+          setPollModalOpen(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -383,6 +477,7 @@ function PlusMenuItem({ icon, label, onPress }: { icon: any, label: string, onPr
     </TouchableOpacity>
   );
 }
+
 
 const styles = StyleSheet.create({
   header: {

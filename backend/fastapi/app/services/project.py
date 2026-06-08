@@ -33,6 +33,7 @@ def _days_left(end_iso: str) -> int:
 def _build(proj: dict, members: list[dict]) -> ProjectResponse:
     return ProjectResponse(
         id=proj["id"],
+        owner_id=proj["owner_id"],
         name=proj["name"],
         emoji=proj["emoji"],
         color=proj["color"],
@@ -54,6 +55,39 @@ def _fetch_members(project_id: str) -> list[dict]:
         .eq("project_id", project_id)
         .execute()
     ).data
+
+
+def _has_access(project_id: str, user_id: str) -> bool:
+    """owner이거나 수락된 멤버면 접근 가능."""
+    if (
+        supabase_admin.table("projects").select("id")
+        .eq("id", project_id).eq("owner_id", user_id).limit(1).execute()
+    ).data:
+        return True
+    if (
+        supabase_admin.table("project_members").select("id")
+        .eq("project_id", project_id).eq("user_id", user_id).eq("status", "accepted")
+        .limit(1).execute()
+    ).data:
+        return True
+    return False
+
+
+def _user_display_name(user) -> str:
+    """profiles에서 표시명 구성 (없으면 이메일 앞부분)."""
+    rows = (
+        supabase_admin.table("profiles")
+        .select("first_name, last_name, username")
+        .eq("id", user.id).limit(1).execute()
+    ).data
+    if rows:
+        p = rows[0]
+        full = f"{p.get('last_name') or ''}{p.get('first_name') or ''}".strip()
+        if full:
+            return full
+        if p.get("username"):
+            return p["username"]
+    return (user.email or "나").split("@")[0]
 
 
 # ── 목록 ──────────────────────────────────────────────────
@@ -115,14 +149,27 @@ def create_project(req: ProjectCreate, token: str) -> ProjectResponse:
         .execute()
     ).data[0]
 
+    # 방장(owner)을 첫 멤버로 추가 (이미 멤버 목록에 본인이 없을 때만)
+    owner_in_members = any(getattr(m, "user_id", None) == user.id for m in req.members)
+    rows_to_insert: list[dict] = []
+    if not owner_in_members:
+        rows_to_insert.append({
+            "project_id": proj["id"],
+            "name": _user_display_name(user),
+            "roles": ["방장"],
+            "user_id": user.id,
+            "status": "accepted",
+        })
+    rows_to_insert.extend({
+        "project_id": proj["id"],
+        "name": m.name,
+        "roles": m.roles,
+        **({"user_id": m.user_id, "status": "pending"} if getattr(m, "user_id", None) else {"status": "accepted"}),
+    } for m in req.members)
+
     members = (
         supabase_admin.table("project_members")
-        .insert([{
-            "project_id": proj["id"],
-            "name": m.name,
-            "roles": m.roles,
-            **({"user_id": m.user_id, "status": "pending"} if getattr(m, "user_id", None) else {"status": "accepted"}),
-        } for m in req.members])
+        .insert(rows_to_insert)
         .execute()
     ).data
     return _build(proj, members)
@@ -132,11 +179,12 @@ def create_project(req: ProjectCreate, token: str) -> ProjectResponse:
 
 def get_project(project_id: str, token: str) -> ProjectResponse:
     user = _get_user(token)
+    if not _has_access(project_id, user.id):
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="프로젝트를 찾을 수 없습니다.")
     rows = (
         supabase_admin.table("projects")
         .select("*")
         .eq("id", project_id)
-        .eq("owner_id", user.id)
         .limit(1)
         .execute()
     ).data

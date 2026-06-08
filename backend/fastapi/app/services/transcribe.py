@@ -27,13 +27,18 @@ def _t(obj: dict) -> float:
     return float(obj.get("seconds") or 0) + float(obj.get("nanos") or 0) / 1e9
 
 
+def _word_text(w: dict) -> str:
+    return (w.get("word") or w.get("text") or w.get("transcript") or "").strip()
+
+
 def _parse_result(g: dict) -> dict:
-    """다글로 응답 → {transcript, keywords, speaker_stats}."""
+    """다글로 응답 → {transcript, keywords, speaker_stats, speaker_samples}."""
     results = g.get("sttResults") or []
     transcript = " ".join((r.get("transcript") or "").strip() for r in results).strip()
 
     keywords: list[str] = []
     speaker_stats: dict[str, float] = {}
+    speaker_words: dict[str, list[str]] = {}
     for r in results:
         for kw in (r.get("keywords") or []):
             if kw and kw not in keywords:
@@ -42,10 +47,25 @@ def _parse_result(g: dict) -> dict:
             sp = w.get("speaker")
             if sp is None:
                 continue
+            key = str(sp)
             dur = max(0.0, _t(w.get("endTime")) - _t(w.get("startTime")))
-            speaker_stats[str(sp)] = round(speaker_stats.get(str(sp), 0.0) + dur, 1)
+            speaker_stats[key] = round(speaker_stats.get(key, 0.0) + dur, 1)
+            txt = _word_text(w)
+            if txt:
+                speaker_words.setdefault(key, []).append(txt)
 
-    return {"transcript": transcript, "keywords": keywords, "speaker_stats": speaker_stats}
+    # 화자별 대표 발언(앞부분 일부)을 매칭 UI에서 보여주기 위해 저장
+    speaker_samples: dict[str, str] = {}
+    for key, words in speaker_words.items():
+        sample = " ".join(words).strip()
+        speaker_samples[key] = sample[:80] + ("…" if len(sample) > 80 else "")
+
+    return {
+        "transcript": transcript,
+        "keywords": keywords,
+        "speaker_stats": speaker_stats,
+        "speaker_samples": speaker_samples,
+    }
 
 
 def transcribe_audio(audio_bytes: bytes, filename: str) -> dict:

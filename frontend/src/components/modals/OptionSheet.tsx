@@ -129,9 +129,13 @@ export default function OptionSheet({
 // ── 사전 정의 옵션 세트 ────────────────────
 
 /** Meeting/Option */
-export const MEETING_OPTIONS = (onEdit: () => void, onDelete: () => void): OptionItem[] => [
-  { label: "회의록 보기",  emoji: "📄", onPress: onEdit },
-  { label: "공유하기",    emoji: "🔗", onPress: () => {} },
+export const MEETING_OPTIONS = (
+  onView: () => void,
+  onDelete: () => void,
+  onShare?: () => void,
+): OptionItem[] => [
+  { label: "회의록 보기",  emoji: "📄", onPress: onView },
+  { label: "공유하기",    emoji: "🔗", onPress: onShare ?? (() => {}) },
   { label: "회의 삭제",   emoji: "🗑️", onPress: onDelete, isDestructive: true },
 ];
 

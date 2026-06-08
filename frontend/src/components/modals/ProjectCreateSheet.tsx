@@ -181,6 +181,7 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
 
     const newProject: Project = {
       id: uid(),
+      ownerId: "",
       name: name.trim(),
       emoji,
       color,

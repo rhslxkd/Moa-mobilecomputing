@@ -6,12 +6,14 @@ import {
   StyleSheet,
   ScrollView,
   Dimensions,
+  Alert,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import Icon from "@/components/common/Icon";
 import { ChatAPI } from "@/services/api";
+import { NoticeModal, PollModal } from "@/components/chat/ChatComposers";
 
 const { width: SCREEN_WIDTH } = Dimensions.get("window");
 
@@ -26,6 +28,10 @@ export default function ChatMenuScreen() {
   const roomName = params.name ?? "채팅방";
 
   const [members, setMembers] = useState<RoomMember[]>([]);
+  const [noticeOpen, setNoticeOpen] = useState(false);
+  const [pollOpen, setPollOpen] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [favorite, setFavorite] = useState(false);
 
   useEffect(() => {
     if (!roomId) return;
@@ -44,9 +50,15 @@ export default function ChatMenuScreen() {
           <Icon name="back" size={24} color="#333" />
         </TouchableOpacity>
         <View style={styles.headerRight}>
-          <TouchableOpacity style={styles.headerBtn}><Icon name="bell" size={22} color="#333" /></TouchableOpacity>
-          <TouchableOpacity style={styles.headerBtn}><Icon name="star" size={22} color="#333" /></TouchableOpacity>
-          <TouchableOpacity style={styles.headerBtn}><Icon name="settings" size={22} color="#333" /></TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => { setMuted(v => !v); Alert.alert("알림", muted ? "채팅방 알림을 켰어요." : "채팅방 알림을 껐어요."); }}>
+            <Icon name="bell" size={22} color={muted ? "#BBB" : "#333"} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => { setFavorite(v => !v); Alert.alert("즐겨찾기", favorite ? "즐겨찾기에서 제거했어요." : "즐겨찾기에 추가했어요."); }}>
+            <Icon name="star" size={22} color={favorite ? "#F5B301" : "#333"} />
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push("/(screens)/settings")}>
+            <Icon name="settings" size={22} color="#333" />
+          </TouchableOpacity>
         </View>
       </View>
 
@@ -85,14 +97,14 @@ export default function ChatMenuScreen() {
             pathname: '/(screens)/chat/ChatArchive',
             params: { projectId: roomId, initialTab: 'link' }
           })} />
-          <MenuListItem icon="calendar" label="일정" color="#4FC3F7" onPress={() => { }} />
+          <MenuListItem icon="calendar" label="전체 To-Do" color="#4FC3F7" onPress={() => router.push("/(tabs)/todos")} />
         </View>
 
         {/* 기능 카드 (그리드) */}
         <View style={styles.card}>
           <View style={styles.gridRow}>
-            <GridItem icon="announcement" label="공지" color="#007AFF" />
-            <GridItem icon="vote" label="투표" color="#9B59B6" />
+            <GridItem icon="announcement" label="공지" color="#007AFF" onPress={() => setNoticeOpen(true)} />
+            <GridItem icon="vote" label="투표" color="#9B59B6" onPress={() => setPollOpen(true)} />
           </View>
         </View>
 
@@ -117,6 +129,23 @@ export default function ChatMenuScreen() {
           ))}
         </View>
       </ScrollView>
+
+      <NoticeModal
+        visible={noticeOpen}
+        onClose={() => setNoticeOpen(false)}
+        onSubmit={(content) => {
+          ChatAPI.createNotice(roomId, content).catch(() => {});
+          setNoticeOpen(false);
+        }}
+      />
+      <PollModal
+        visible={pollOpen}
+        onClose={() => setPollOpen(false)}
+        onSubmit={(question, options) => {
+          ChatAPI.createPoll(roomId, question, options).catch(() => {});
+          setPollOpen(false);
+        }}
+      />
     </SafeAreaView>
   );
 }
@@ -130,9 +159,9 @@ function MenuListItem({ icon, label, color, onPress }: { icon: any, label: strin
   );
 }
 
-function GridItem({ icon, label, color }: { icon: any, label: string, color: string }) {
+function GridItem({ icon, label, color, onPress }: { icon: any, label: string, color: string, onPress?: () => void }) {
   return (
-    <TouchableOpacity style={styles.gridItem}>
+    <TouchableOpacity style={styles.gridItem} onPress={onPress}>
       <Icon name={icon} size={20} color={color} />
       <Text style={styles.itemTitle}>{label}</Text>
     </TouchableOpacity>

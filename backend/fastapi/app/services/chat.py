@@ -5,7 +5,9 @@ from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
 
 from app.core.supabase import supabase_admin
-from app.schemas.chat import ChatRoomResponse, MessageResponse
+from app.schemas.chat import (
+    ChatRoomResponse, MessageResponse, NoticeResponse, PollResponse,
+)
 
 DRIVE_BUCKET = "drive"
 
@@ -380,3 +382,141 @@ def send_file_message(
     ).data[0]
     pmap = _profiles_map([user.id])
     return _build_message(row, _display_name(pmap.get(user.id, {})))
+
+
+# ── 공지 ───────────────────────────────────────────────────
+
+def _author_name(user_id: str) -> str:
+    return _display_name(_profiles_map([user_id]).get(user_id, {}))
+
+
+def list_notices(room_id: str, token: str) -> list[NoticeResponse]:
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    rows = (
+        supabase_admin.table("chat_notices")
+        .select("*").eq("room_id", room_id)
+        .order("created_at", desc=True).execute()
+    ).data
+    pmap = _profiles_map([r["created_by"] for r in rows])
+    return [
+        NoticeResponse(
+            id=r["id"], room_id=r["room_id"], content=r["content"],
+            author_name=_display_name(pmap.get(r["created_by"], {})),
+            created_at=r["created_at"],
+        )
+        for r in rows
+    ]
+
+
+def create_notice(room_id: str, content: str, token: str) -> NoticeResponse:
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    row = (
+        supabase_admin.table("chat_notices")
+        .insert({"room_id": room_id, "content": content, "created_by": user.id})
+        .execute()
+    ).data[0]
+    return NoticeResponse(
+        id=row["id"], room_id=row["room_id"], content=row["content"],
+        author_name=_author_name(user.id), created_at=row["created_at"],
+    )
+
+
+def delete_notice(notice_id: str, token: str) -> None:
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("chat_notices").select("room_id")
+        .eq("id", notice_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="공지를 찾을 수 없습니다.")
+    _assert_member(rows[0]["room_id"], user.id)
+    supabase_admin.table("chat_notices").delete().eq("id", notice_id).execute()
+
+
+# ── 투표 ───────────────────────────────────────────────────
+
+def _build_poll(p: dict, my_user_id: str) -> PollResponse:
+    votes = (
+        supabase_admin.table("chat_poll_votes")
+        .select("user_id, option_index").eq("poll_id", p["id"]).execute()
+    ).data
+    options = p.get("options") or []
+    counts = [0] * len(options)
+    my_vote = None
+    for v in votes:
+        idx = v.get("option_index")
+        if idx is not None and 0 <= idx < len(counts):
+            counts[idx] += 1
+        if v.get("user_id") == my_user_id:
+            my_vote = idx
+    return PollResponse(
+        id=p["id"], room_id=p["room_id"], question=p["question"],
+        options=options, counts=counts, total_votes=len(votes),
+        my_vote=my_vote, author_name=_author_name(p["created_by"]),
+        closed=p.get("closed", False), created_at=p["created_at"],
+    )
+
+
+def list_polls(room_id: str, token: str) -> list[PollResponse]:
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    rows = (
+        supabase_admin.table("chat_polls")
+        .select("*").eq("room_id", room_id)
+        .order("created_at", desc=True).execute()
+    ).data
+    return [_build_poll(p, user.id) for p in rows]
+
+
+def create_poll(room_id: str, question: str, options: list[str], token: str) -> PollResponse:
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    opts = [o.strip() for o in options if o.strip()]
+    if len(opts) < 2:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="선택지는 2개 이상이어야 합니다.")
+    row = (
+        supabase_admin.table("chat_polls")
+        .insert({"room_id": room_id, "question": question, "options": opts, "created_by": user.id})
+        .execute()
+    ).data[0]
+    return _build_poll(row, user.id)
+
+
+def vote_poll(poll_id: str, option_index: int, token: str) -> PollResponse:
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("chat_polls").select("*").eq("id", poll_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="투표를 찾을 수 없습니다.")
+    poll = rows[0]
+    _assert_member(poll["room_id"], user.id)
+    if not (0 <= option_index < len(poll.get("options") or [])):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="잘못된 선택지입니다.")
+    existing = (
+        supabase_admin.table("chat_poll_votes").select("id")
+        .eq("poll_id", poll_id).eq("user_id", user.id).limit(1).execute()
+    ).data
+    if existing:
+        supabase_admin.table("chat_poll_votes").update(
+            {"option_index": option_index}
+        ).eq("id", existing[0]["id"]).execute()
+    else:
+        supabase_admin.table("chat_poll_votes").insert(
+            {"poll_id": poll_id, "user_id": user.id, "option_index": option_index}
+        ).execute()
+    return _build_poll(poll, user.id)
+
+
+def delete_poll(poll_id: str, token: str) -> None:
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("chat_polls").select("room_id")
+        .eq("id", poll_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="투표를 찾을 수 없습니다.")
+    _assert_member(rows[0]["room_id"], user.id)
+    supabase_admin.table("chat_polls").delete().eq("id", poll_id).execute()
