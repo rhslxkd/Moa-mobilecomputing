@@ -4,13 +4,7 @@
     "slug": "moa",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/blob_large.png",
     "userInterfaceStyle": "automatic",
-    "splash": {
-      "image": "./assets/blob_large.png",
-      "resizeMode": "contain",
-      "backgroundColor": "#29B6E8"
-    },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.moa.app"
