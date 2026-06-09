@@ -4,10 +4,10 @@
     "slug": "moa",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/blob_large.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/blob_large.png",
       "resizeMode": "contain",
       "backgroundColor": "#29B6E8"
     },
@@ -16,7 +16,12 @@
       "bundleIdentifier": "com.moa.app"
     },
     "android": {
-      "package": "com.moa.app"
+      "package": "com.moa.app",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA"
+      ]
     },
     "scheme": "moa",
     "plugins": [
@@ -46,6 +51,12 @@
     "experiments": {
       "typedRoutes": false,
       "newArchEnabled": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ee20218a-d574-4997-b254-52ce828162ec"
+      }
     }
   }
 }
