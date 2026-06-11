@@ -17,8 +17,10 @@ class Settings(BaseSettings):
     ai_base_url: str = ""
     ai_model: str = "gpt-4o-mini"
 
-    # Firebase (푸시 알림) — serviceAccountKey.json 경로
+    # Firebase (푸시 알림)
+    # 로컬: serviceAccountKey.json 경로 / 배포(Railway): JSON 내용을 환경변수로
     firebase_credentials_path: str = ""
+    firebase_credentials_json: str = ""
 
     class Config:
         env_file = ".env"

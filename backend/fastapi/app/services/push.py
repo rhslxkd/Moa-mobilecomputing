@@ -1,3 +1,4 @@
+import json
 import firebase_admin
 from firebase_admin import credentials, messaging
 from app.core.config import settings
@@ -7,9 +8,19 @@ _initialized = False
 
 def _init():
     global _initialized
-    if _initialized or not settings.firebase_credentials_path:
+    if _initialized:
         return
-    cred = credentials.Certificate(settings.firebase_credentials_path)
+    cred = None
+    # 배포(Railway): 환경변수 JSON 내용 우선 / 로컬: 파일 경로
+    if settings.firebase_credentials_json:
+        try:
+            cred = credentials.Certificate(json.loads(settings.firebase_credentials_json))
+        except Exception:
+            cred = None
+    elif settings.firebase_credentials_path:
+        cred = credentials.Certificate(settings.firebase_credentials_path)
+    if cred is None:
+        return
     firebase_admin.initialize_app(cred)
     _initialized = True
 
