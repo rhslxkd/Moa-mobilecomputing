@@ -6,6 +6,7 @@ import {
   StyleSheet,
   TextInput,
   SectionList,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -37,9 +38,11 @@ export default function AddChatScreen() {
   const [friends, setFriends] = useState<FriendDTO[]>([]);
   const [searchText, setSearchText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    FriendsAPI.list().then(setFriends).catch(() => {});
+    setIsLoading(true);
+    FriendsAPI.list().then(setFriends).catch(() => {}).finally(() => setIsLoading(false));
   }, []);
 
   const startChat = async (friend: FriendDTO) => {
@@ -95,9 +98,16 @@ export default function AddChatScreen() {
           </View>
         )}
         ListEmptyComponent={
-          <Text style={{ textAlign: "center", color: C.textMuted, marginTop: 40, fontSize: 14 }}>
-            친구가 없어요. 먼저 친구를 추가해보세요.
-          </Text>
+          isLoading ? (
+            <View style={{ alignItems: "center", paddingVertical: 40 }}>
+              <ActivityIndicator size="large" color={C.primary} />
+              <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 10 }}>불러오는 중...</Text>
+            </View>
+          ) : (
+            <Text style={{ textAlign: "center", color: C.textMuted, marginTop: 40, fontSize: 14 }}>
+              친구가 없어요. 먼저 친구를 추가해보세요.
+            </Text>
+          )
         }
         renderItem={({ item }) => (
           <TouchableOpacity

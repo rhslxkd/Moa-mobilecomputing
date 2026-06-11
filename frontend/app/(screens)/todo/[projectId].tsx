@@ -15,8 +15,9 @@ import {
   UIManager,
   Modal,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Path, Polyline } from "react-native-svg";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
@@ -114,7 +115,7 @@ function Calendar({ selectedDate, onSelectDate, todosByDate, accent }: {
     <View style={[calS.card, { backgroundColor: C.bgCard }]}>
       <View style={calS.navRow}>
         <TouchableOpacity onPress={prev} activeOpacity={0.7} style={calS.navBtn}><ChevronLeft color={C.textSub} /></TouchableOpacity>
-        <Text style={[calS.monthLabel, { color: C.text }]}>{viewMonth + 1}월</Text>
+        <Text style={[calS.monthLabel, { color: C.text }]}>{viewYear}년 {viewMonth + 1}월</Text>
         <TouchableOpacity onPress={next} activeOpacity={0.7} style={calS.navBtn}><ChevronRight color={C.textSub} /></TouchableOpacity>
       </View>
       <View style={calS.weekRow}>
@@ -140,8 +141,10 @@ function Calendar({ selectedDate, onSelectDate, todosByDate, accent }: {
                 onPress={() => isSelected ? onSelectDate(null) : onSelectDate(new Date(viewYear, viewMonth, day))}
                 activeOpacity={0.7}
               >
-                <View style={[calS.dayCircle, isSelected && { backgroundColor: accent }, isToday && !isSelected && { borderWidth: 1.5, borderColor: accent }]}>
-                  <Text style={[calS.dayText, { color: isSelected ? "#fff" : isSun ? "#FF3B30" : isSat ? accent : C.text, fontWeight: isToday ? "700" : "400" }]}>{day}</Text>
+                <View style={[calS.dayCircleWrap, isToday && !isSelected && { borderWidth: 1.5, borderColor: accent }]}>
+                  <View style={[calS.dayCircle, isSelected && { backgroundColor: accent }]}>
+                    <Text style={[calS.dayText, { color: isSelected ? "#fff" : isToday ? accent : isSun ? "#FF3B30" : isSat ? accent : C.text, fontWeight: (isToday || isSelected) ? "700" : "400" }]}>{day}</Text>
+                  </View>
                 </View>
                 {count > 0 && (
                   <View style={calS.dotRow}>
@@ -167,7 +170,8 @@ const calS = StyleSheet.create({
   weekRow: { flexDirection: "row" },
   dayLabel: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "600", paddingVertical: 6, letterSpacing: 0.3 },
   dayCell: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
-  dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  dayCircleWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  dayCircle: { width: 32, height: 32, borderRadius: 16, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   dayText: { fontSize: 13 },
   dotRow: { flexDirection: "row", gap: 2, height: 5, alignItems: "center" },
   dot: { width: 4, height: 4, borderRadius: 2 },
@@ -308,6 +312,7 @@ const memS = StyleSheet.create({
 export default function ProjectTodosScreen() {
   const C = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
   const { projects } = useProject();
 
@@ -316,6 +321,7 @@ export default function ProjectTodosScreen() {
 
   const [todoMap, setTodoMap] = useState<Record<string, TodoItem[]>>({});
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
   // 수정 모달 상태
   const [editId, setEditId] = useState<string | null>(null);
@@ -326,6 +332,7 @@ export default function ProjectTodosScreen() {
 
   const load = useCallback(() => {
     if (!projectId) return;
+    setIsLoading(true);
     TodoAPI.listByProject(projectId).then(dtos => {
       const map: Record<string, TodoItem[]> = {};
       dtos.forEach(d => {
@@ -339,7 +346,7 @@ export default function ProjectTodosScreen() {
         });
       });
       setTodoMap(map);
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => setIsLoading(false));
   }, [projectId]);
 
   useFocusEffect(load);
@@ -410,8 +417,13 @@ export default function ProjectTodosScreen() {
   const totalPending = useMemo(() => Object.values(filteredMap).flat().filter(t => !t.done).length, [filteredMap]);
   const hasAny = useMemo(() => Object.values(filteredMap).some(ts => ts.length > 0), [filteredMap]);
 
+  const todayStr = toDateStr(new Date());
   const dateLabelStr = selectedDate
-    ? `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일 (${DAY_KO[selectedDate.getDay()]})`
+    ? (() => {
+        const selStr = toDateStr(selectedDate);
+        const suffix = selStr === todayStr ? " (오늘)" : selStr < todayStr ? " (지난 날)" : "";
+        return `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일${suffix}`;
+      })()
     : "전체";
 
   if (!project) {
@@ -452,7 +464,7 @@ export default function ProjectTodosScreen() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + 48 }]} showsVerticalScrollIndicator={false}>
         {/* 캘린더 */}
         <Calendar
           selectedDate={selectedDate}
@@ -479,7 +491,12 @@ export default function ProjectTodosScreen() {
         </View>
 
         {/* 멤버별 섹션 */}
-        {hasAny ? (
+        {isLoading ? (
+          <View style={{ alignItems: "center", paddingVertical: 48 }}>
+            <ActivityIndicator size="large" color={accent} />
+            <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 10 }}>불러오는 중...</Text>
+          </View>
+        ) : hasAny ? (
           <>
             {project.members.map(member => (
               <MemberSection
@@ -511,6 +528,7 @@ export default function ProjectTodosScreen() {
             <Text style={[s.emptyDesc, { color: C.textMuted }]}>새로운 할 일을 추가해보세요</Text>
           </View>
         )}
+
       </ScrollView>
 
       {/* 수정 모달 */}

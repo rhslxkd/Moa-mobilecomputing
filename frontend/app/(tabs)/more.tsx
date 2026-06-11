@@ -9,6 +9,7 @@ import {
   ScrollView,
   TouchableOpacity,
   StyleSheet,
+  ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
@@ -50,7 +51,7 @@ export default function MoreScreen() {
   const C = useTheme();
   const router = useRouter();
   const { user } = useAuth();
-  const { projects } = useProject();
+  const { projects, loading } = useProject();
 
   const displayName = user?.fullName || user?.username || "-";
   const avatarChar = displayName.charAt(0);
@@ -146,14 +147,18 @@ export default function MoreScreen() {
           onPress={() => router.push("/(screens)/drive" as any)}
         >
           <Icon name="folder" size={22} color={C.primary} />
-          <Text style={[s.driveRowText, { color: C.text }]}>폴더 바로가기</Text>
+          <Text style={[s.driveRowText, { color: C.text }]}>드라이브 바로가기</Text>
           <Icon name="chevron" size={18} color={C.textMuted} />
         </TouchableOpacity>
 
-        {/* ── 팀 건강 ── */}
-        <Text style={[s.sectionLabel, { color: C.textMuted }]}>팀 건강</Text>
+        {/* ── 팀 컨디션 모니터링 ── */}
+        <Text style={[s.sectionLabel, { color: C.textMuted }]}>팀 컨디션 모니터링</Text>
         <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
-          {projects.map((proj, idx) => {
+          {loading ? (
+            <View style={{ alignItems: "center", paddingVertical: 24 }}>
+              <ActivityIndicator size="small" color={C.primary} />
+            </View>
+          ) : projects.map((proj, idx) => {
             const health = getProjectHealth(proj.status);
             return (
               <View
@@ -178,7 +183,6 @@ export default function MoreScreen() {
             );
           })}
         </View>
-
       </ScrollView>
     </SafeAreaView>
   );
@@ -267,7 +271,7 @@ const s = StyleSheet.create({
   // 섹션 레이블
   sectionLabel: { fontSize: 12, fontWeight: "600", paddingHorizontal: 4, marginBottom: -4 },
 
-  // 팀 건강 행
+  // 팀 컨디션 모니터링 행
   healthRow: {
     flexDirection: "row",
     alignItems: "center",

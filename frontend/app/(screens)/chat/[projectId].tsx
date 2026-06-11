@@ -89,8 +89,8 @@ function PinnedCards({ notices, polls, onDeleteNotice, onVote, onDeletePoll }: {
                 const mine = p.my_vote === i;
                 return (
                   <TouchableOpacity key={i} activeOpacity={0.7} onPress={() => onVote(p.id, i)}
-                    style={pollStyles.option}>
-                    <View style={[pollStyles.optionFill, { width: `${pct}%`, backgroundColor: mine ? "#00A9EC30" : "#E5E7EB" }]} />
+                    style={[pollStyles.option, { borderColor: C.border }]}>
+                    <View style={[pollStyles.optionFill, { width: `${pct}%`, backgroundColor: mine ? C.primary + "30" : C.border }]} />
                     <Text style={[pollStyles.optionLabel, { color: C.text }, mine && { fontWeight: "700", color: "#00A9EC" }]}>
                       {mine ? "✓ " : ""}{opt}
                     </Text>
@@ -138,8 +138,8 @@ export default function ChatDetailScreen() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { user } = useAuth();
-  const params = useLocalSearchParams<{ projectId: string; name?: string }>();
-  const roomId = params.projectId;
+  const params = useLocalSearchParams<{ projectId: string; name?: string; isProjectId?: string }>();
+  const [roomId, setRoomId] = useState<string>(params.isProjectId === "1" ? "" : params.projectId);
   const roomName = params.name ?? "채팅방";
 
   const [messages, setMessages] = useState<Message[]>([]);
@@ -208,6 +208,16 @@ export default function ChatDetailScreen() {
   reloadReadRef.current = reloadReadStatus;
 
   // 초기 로드 병렬 처리 + Realtime 구독
+  // isProjectId=1 이면 먼저 openProject로 roomId 확보
+  useEffect(() => {
+    if (params.isProjectId === "1" && params.projectId) {
+      setIsLoading(true);
+      ChatAPI.openProject(params.projectId)
+        .then(room => setRoomId(room.id))
+        .catch(() => {});
+    }
+  }, [params.projectId, params.isProjectId]);
+
   useEffect(() => {
     if (!roomId) return;
 
@@ -237,7 +247,11 @@ export default function ChatDetailScreen() {
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "messages", filter: `room_id=eq.${roomId}` },
-        () => reloadRef.current(),
+        () => {
+          reloadRef.current();
+          // 새 메시지 수신 시 읽음 처리 갱신 (채팅방에 있는 동안은 계속 읽음 처리)
+          ChatAPI.markAsRead(roomId).catch(() => {});
+        },
       )
       .on(
         "postgres_changes",
@@ -246,12 +260,22 @@ export default function ChatDetailScreen() {
       )
       .subscribe();
 
-    return () => { supabase.removeChannel(msgChannel); };
+    // Realtime이 안 올 경우 대비 폴링 (5초마다 read status 갱신)
+    const pollInterval = setInterval(() => reloadReadRef.current(), 5000);
+
+    return () => {
+      supabase.removeChannel(msgChannel);
+      clearInterval(pollInterval);
+    };
   }, [roomId]);
 
   const unreadCountFor = (msgCreatedAt: string) => {
     if (!msgCreatedAt) return 0;
-    return othersRead.filter(m => !m.last_read_at || m.last_read_at < msgCreatedAt).length;
+    const msgTime = new Date(msgCreatedAt).getTime();
+    return othersRead.filter(m => {
+      if (!m.last_read_at) return true;
+      return new Date(m.last_read_at).getTime() < msgTime;
+    }).length;
   };
 
   const filteredMessages = isSearchMode && searchText.trim() !== ""
@@ -314,33 +338,27 @@ export default function ChatDetailScreen() {
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={0}
+keyboardVerticalOffset={0}
       >
         {/* 헤더 */}
         <View style={[styles.header, { backgroundColor: C.bgCard, borderBottomColor: C.border, borderBottomWidth: 1 }]}>
           <TouchableOpacity onPress={() => router.back()} style={styles.headerBtn}>
             <Icon name="back" size={24} color={C.text} />
           </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <Text style={[styles.headerTitle, { color: C.text }]}>{roomName}</Text>
+          <View style={[styles.headerTitleContainer, { flex: 1, marginLeft: 4 }]}>
+            <Text style={[styles.headerTitle, { color: C.text }]} numberOfLines={1}>{roomName}</Text>
             {memberCount > 1 && <Text style={styles.memberCount}>{memberCount}</Text>}
           </View>
           <View style={{ flexDirection: 'row', gap: 4 }}>
             <TouchableOpacity
               style={styles.headerBtn}
-              onPress={() => {
-                setIsSearchMode(!isSearchMode);
-                if (isSearchMode) setSearchText("");
-              }}
+              onPress={() => { setIsSearchMode(!isSearchMode); if (isSearchMode) setSearchText(""); }}
             >
               <Icon name="search" size={22} color={isSearchMode ? "#00A9EC" : C.text} />
             </TouchableOpacity>
             <TouchableOpacity
               style={styles.headerBtn}
-              onPress={() => router.push({
-                pathname: '/(screens)/chat/ChatMenu',
-                params: { projectId: roomId, name: roomName }
-              })}
+              onPress={() => router.push({ pathname: '/(screens)/chat/ChatMenu', params: { projectId: roomId, name: roomName } })}
             >
               <Icon name="menu" size={24} color={C.text} />
             </TouchableOpacity>
@@ -382,7 +400,7 @@ export default function ChatDetailScreen() {
         {isLoading ? (
           <View style={{ flex: 1, justifyContent: "center", alignItems: "center", backgroundColor: C.bg }}>
             <ActivityIndicator size="large" color="#00A9EC" />
-            <Text style={{ marginTop: 10, color: "#9CA3AF", fontSize: 13 }}>채팅을 불러오는 중...</Text>
+            <Text style={{ marginTop: 10, color: C.textMuted, fontSize: 13 }}>채팅을 불러오는 중...</Text>
           </View>
         ) : (
           <FlatList
@@ -404,33 +422,30 @@ export default function ChatDetailScreen() {
               />
             )}
             style={{ flex: 1, backgroundColor: C.bg }}
-            contentContainerStyle={{ paddingVertical: 20 }}
+            contentContainerStyle={{ paddingTop: 20, paddingBottom: 28 }}
             onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
+            onScrollBeginDrag={() => setShowPlusMenu(false)}
           />
         )}
 
-        {/* 플러스 메뉴 */}
+        {/* 플러스 메뉴 패널 */}
         {showPlusMenu && (
-          <View style={[styles.plusMenuContainer, { backgroundColor: C.bgCard, bottom: 60 + (insets.bottom || 0) }]}>
-            <View style={styles.plusMenuGrid}>
-              <PlusMenuItem icon="camera" label="카메라" onPress={pickCamera} />
-              <PlusMenuItem icon="photo" label="사진" onPress={pickPhoto} />
-              <PlusMenuItem icon="file" label="파일" onPress={pickFile} />
-              <PlusMenuItem icon="announcement" label="공지" onPress={() => { setShowPlusMenu(false); setNoticeModalOpen(true); }} />
-              <PlusMenuItem icon="vote" label="투표" onPress={() => { setShowPlusMenu(false); setPollModalOpen(true); }} />
+          <View style={[styles.plusPanel, { backgroundColor: C.bgCard, borderTopColor: C.border, paddingBottom: 4 }]}>
+            <View style={styles.plusGrid}>
+              <PlusMenuItem icon="camera"       label="카메라" color="#007AFF" onPress={pickCamera} />
+              <PlusMenuItem icon="photo"        label="사진"   color="#2ECC71" onPress={pickPhoto} />
+              <PlusMenuItem icon="file"         label="파일"   color="#7F8C8D" onPress={pickFile} />
+              <PlusMenuItem icon="announcement" label="공지"   color="#FF9500" onPress={() => { setShowPlusMenu(false); setNoticeModalOpen(true); }} />
+              <PlusMenuItem icon="vote"         label="투표"   color="#9B59B6" onPress={() => { setShowPlusMenu(false); setPollModalOpen(true); }} />
             </View>
           </View>
         )}
 
         {/* 하단 입력바 */}
-        <View style={[styles.inputBar, { backgroundColor: C.bgCard, borderTopColor: C.border, paddingBottom: Math.max(insets.bottom, 10) }]}>
-          <TouchableOpacity
-            style={styles.plusBtn}
-            onPress={() => setShowPlusMenu(!showPlusMenu)}
-          >
+        <View style={[styles.inputBar, { backgroundColor: C.bgCard, borderTopColor: C.border, paddingBottom: 10 }]}>
+          <TouchableOpacity style={styles.plusBtn} onPress={() => setShowPlusMenu(!showPlusMenu)}>
             <Icon name="add" size={24} color={C.textMuted} />
           </TouchableOpacity>
-
           <View style={[styles.inputContainer, { backgroundColor: C.bgMuted }]}>
             <TextInput
               style={[styles.input, { color: C.text }]}
@@ -438,20 +453,20 @@ export default function ChatDetailScreen() {
               placeholderTextColor={C.textMuted}
               value={inputText}
               onChangeText={setInputText}
+              onFocus={() => setShowPlusMenu(false)}
               multiline
             />
           </View>
-
-          <TouchableOpacity
-            onPress={sendMessage}
-            disabled={!inputText.trim()}
-          >
-            <View style={[styles.sendBtn, { backgroundColor: inputText.trim() ? '#00A9EC' : '#E5E7EB' }]}>
+          <TouchableOpacity onPress={sendMessage} disabled={!inputText.trim()}>
+            <View style={[styles.sendBtn, { backgroundColor: inputText.trim() ? C.primary : C.border }]}>
               <Icon name="send" size={20} color="#FFF" />
             </View>
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
+
+      {/* 하단 네비게이션 바 영역 배경 채우기 */}
+      <View style={{ height: insets.bottom, backgroundColor: C.bgCard }} />
 
       <NoticeModal
         visible={noticeModalOpen}
@@ -477,14 +492,14 @@ export default function ChatDetailScreen() {
   );
 }
 
-function PlusMenuItem({ icon, label, onPress }: { icon: any, label: string, onPress: () => void }) {
+function PlusMenuItem({ icon, label, color, onPress }: { icon: any, label: string, color: string, onPress: () => void }) {
   const C = useTheme();
   return (
-    <TouchableOpacity style={styles.plusMenuItem} onPress={onPress}>
-      <View style={[styles.plusIconCircle, { backgroundColor: C.bgMuted }]}>
-        <Icon name={icon} size={24} color={C.text} />
+    <TouchableOpacity style={styles.plusMenuItem} onPress={onPress} activeOpacity={0.7}>
+      <View style={[styles.plusIconBox, { backgroundColor: color + '18' }]}>
+        <Icon name={icon} size={26} color={color} />
       </View>
-      <Text style={[styles.plusMenuLabel, { color: C.text }]}>{label}</Text>
+      <Text style={[styles.plusMenuLabel, { color: C.textMuted }]}>{label}</Text>
     </TouchableOpacity>
   );
 }
@@ -494,7 +509,6 @@ const styles = StyleSheet.create({
     height: 56,
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
     paddingHorizontal: 12,
     backgroundColor: '#FFF',
   },
@@ -579,39 +593,32 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  plusMenuContainer: {
-    position: 'absolute',
-    bottom: 60,
-    left: 20,
-    width: 160,
-    borderRadius: 16,
-    padding: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    zIndex: 100,
+  plusPanel: {
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 14,
+    paddingHorizontal: 16,
   },
-  plusMenuGrid: {
-    gap: 16,
+  plusGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
   },
   plusMenuItem: {
-    flexDirection: 'row',
+    width: '18%',
+    flexGrow: 1,
     alignItems: 'center',
-    gap: 12,
+    gap: 8,
+    paddingVertical: 4,
   },
-  plusIconCircle: {
-    width: 32,
-    height: 32,
-    borderRadius: 16,
-    backgroundColor: '#F3F4F6',
+  plusIconBox: {
+    width: 56,
+    height: 56,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
   },
   plusMenuLabel: {
-    fontSize: 14,
-    color: '#333',
+    fontSize: 12,
     fontWeight: '500',
   }
 });

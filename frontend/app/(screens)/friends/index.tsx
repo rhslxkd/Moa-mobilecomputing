@@ -12,6 +12,7 @@ import {
   TextInput,
   Modal,
   Alert,
+  Dimensions,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -64,6 +65,7 @@ export default function FriendsScreen() {
   const { projects } = useProject();
   const { user } = useAuth();
   const [showQRModal, setShowQRModal] = useState(false);
+  const [qrTab, setQrTab] = useState<"my" | "scan">("my");
 
   const [friends, setFriends] = useState<Friend[]>([]);
   const [requests, setRequests] = useState<FriendRequestDTO[]>([]);
@@ -71,6 +73,8 @@ export default function FriendsScreen() {
   const [mode, setMode] = useState<Mode>("normal");
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [showMenu, setShowMenu] = useState(false);
+  const [menuBtnY, setMenuBtnY] = useState(64);
+  const [menuBtnX, setMenuBtnX] = useState(0);
 
   const loadFriends = useCallback(() => {
     FriendsAPI.list()
@@ -219,7 +223,7 @@ export default function FriendsScreen() {
           ) : (
             <>
               <TouchableOpacity
-                onPress={() => setShowQRModal(true)}
+                onPress={() => { setQrTab("my"); setShowQRModal(true); }}
                 style={s.iconBtn} activeOpacity={0.7}
               >
                 <Text style={{ color: C.textSub, fontSize: 12, fontWeight: "800" }}>QR</Text>
@@ -227,6 +231,12 @@ export default function FriendsScreen() {
               <TouchableOpacity
                 onPress={() => setShowMenu(v => !v)}
                 style={s.iconBtn} activeOpacity={0.7}
+                onLayout={e => {
+                  e.target.measure((_x, _y, _w, h, _px, py) => {
+                    setMenuBtnY(py + h);
+                    setMenuBtnX(_px + _w);
+                  });
+                }}
               >
                 <Icon name="option" size={22} color={C.textSub} />
               </TouchableOpacity>
@@ -245,7 +255,7 @@ export default function FriendsScreen() {
       {showMenu && (
         <>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowMenu(false)} />
-          <View style={[s.dropdown, { backgroundColor: C.bgCard, borderColor: C.border, shadowColor: "#000" }]}>
+          <View style={[s.dropdown, { backgroundColor: C.bgCard, borderColor: C.border, shadowColor: "#000", top: menuBtnY + 4, right: Dimensions.get("window").width - menuBtnX }]}>
             <TouchableOpacity
               onPress={() => handleMenuOption("invite")}
               style={[s.dropdownItem, { borderBottomColor: C.border, borderBottomWidth: StyleSheet.hairlineWidth }]}
@@ -531,7 +541,7 @@ export default function FriendsScreen() {
         </View>
       </Modal>
 
-      {/* ── 내 QR 모달 ── */}
+      {/* ── QR 모달 (내 QR / 스캔) ── */}
       <Modal visible={showQRModal} transparent animationType="fade" onRequestClose={() => setShowQRModal(false)}>
         <TouchableOpacity
           style={s.qrModalBackdrop}
@@ -539,18 +549,72 @@ export default function FriendsScreen() {
           onPress={() => setShowQRModal(false)}
         >
           <TouchableOpacity activeOpacity={1} style={[s.qrModalCard, { backgroundColor: C.bgCard }]}>
-            <Text style={[s.qrModalTitle, { color: C.text }]}>내 QR 코드</Text>
-            <Text style={[s.qrModalSub, { color: C.textMuted }]}>
-              친구가 이 코드를 스캔하면 친구 요청이 와요
-            </Text>
-            <View style={s.qrBox}>
-              {user?.username ? (
-                <QRCode value={user.username} size={200} />
-              ) : (
-                <Text style={{ color: C.textMuted }}>로그인이 필요해요</Text>
-              )}
+            {/* 탭 */}
+            <View style={[s.qrTabBar, { backgroundColor: C.bg, borderColor: C.border }]}>
+              <TouchableOpacity
+                style={[s.qrTab, qrTab === "my" && { backgroundColor: C.bgCard }]}
+                onPress={() => setQrTab("my")}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.qrTabText, { color: qrTab === "my" ? C.primary : C.textMuted, fontWeight: qrTab === "my" ? "700" : "500" }]}>
+                  내 QR
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[s.qrTab, qrTab === "scan" && { backgroundColor: C.bgCard }]}
+                onPress={() => setQrTab("scan")}
+                activeOpacity={0.8}
+              >
+                <Text style={[s.qrTabText, { color: qrTab === "scan" ? C.primary : C.textMuted, fontWeight: qrTab === "scan" ? "700" : "500" }]}>
+                  스캔하기
+                </Text>
+              </TouchableOpacity>
             </View>
-            <Text style={[s.qrModalUsername, { color: C.text }]}>@{user?.username ?? ""}</Text>
+
+            {qrTab === "my" ? (
+              /* ── 내 QR ── */
+              <>
+                <Text style={[s.qrModalSub, { color: C.textMuted, marginTop: 16 }]}>
+                  친구가 이 코드를 스캔하면 친구 요청이 와요
+                </Text>
+                <View style={s.qrBox}>
+                  {user?.username ? (
+                    <QRCode value={user.username} size={188} />
+                  ) : (
+                    <Text style={{ color: C.textMuted }}>로그인이 필요해요</Text>
+                  )}
+                </View>
+                <Text style={[s.qrModalUsername, { color: C.text }]}>@{user?.username ?? ""}</Text>
+              </>
+            ) : (
+              /* ── 스캔하기 ── */
+              <>
+                <Text style={[s.qrModalSub, { color: C.textMuted, marginTop: 16 }]}>
+                  친구의 QR 코드를 스캔해서 친구 요청을 보내요
+                </Text>
+                <TouchableOpacity
+                  style={[s.qrScanBtn, { borderColor: C.border, backgroundColor: C.bg }]}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    setShowQRModal(false);
+                    router.push("/(screens)/qr/scan" as any);
+                  }}
+                >
+                  <View style={s.qrScanIconWrap}>
+                    <Svg width={48} height={48} viewBox="0 0 24 24" fill="none">
+                      <Path d="M3 7V5a2 2 0 0 1 2-2h2" stroke={C.primary} strokeWidth={1.8} strokeLinecap="round" />
+                      <Path d="M17 3h2a2 2 0 0 1 2 2v2" stroke={C.primary} strokeWidth={1.8} strokeLinecap="round" />
+                      <Path d="M21 17v2a2 2 0 0 1-2 2h-2" stroke={C.primary} strokeWidth={1.8} strokeLinecap="round" />
+                      <Path d="M7 21H5a2 2 0 0 1-2-2v-2" stroke={C.primary} strokeWidth={1.8} strokeLinecap="round" />
+                      <Path d="M3 12h18" stroke={C.primary} strokeWidth={1.8} strokeLinecap="round" />
+                    </Svg>
+                  </View>
+                  <Text style={[s.qrScanBtnLabel, { color: C.text }]}>카메라로 QR 스캔</Text>
+                  <Text style={[s.qrScanBtnSub, { color: C.textMuted }]}>친구의 QR 코드를 카메라로 인식해요</Text>
+                </TouchableOpacity>
+              </>
+            )}
+
             <TouchableOpacity
               onPress={() => setShowQRModal(false)}
               style={[s.qrModalClose, { backgroundColor: C.primary }]}
@@ -584,8 +648,6 @@ const s = StyleSheet.create({
   // 드롭다운
   dropdown: {
     position: "absolute",
-    top: 64,
-    right: 12,
     zIndex: 100,
     borderRadius: 12,
     borderWidth: 1,
@@ -786,13 +848,32 @@ const s = StyleSheet.create({
   reqRejectBtn: { paddingHorizontal: 12, paddingVertical: 7, borderRadius: 8, borderWidth: 1 },
   reqRejectText: { fontSize: 13, fontWeight: "600" },
 
-  // 내 QR 모달
+  // QR 모달
   qrModalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.5)", alignItems: "center", justifyContent: "center", padding: 32 },
-  qrModalCard: { width: "100%", borderRadius: 20, padding: 24, alignItems: "center", gap: 12 },
-  qrModalTitle: { fontSize: 18, fontWeight: "700" },
-  qrModalSub: { fontSize: 13, textAlign: "center" },
-  qrBox: { padding: 16, backgroundColor: "#fff", borderRadius: 16, marginVertical: 8 },
-  qrModalUsername: { fontSize: 16, fontWeight: "700" },
-  qrModalClose: { borderRadius: 12, paddingVertical: 13, paddingHorizontal: 40, marginTop: 4 },
+  qrModalCard: { width: "100%", borderRadius: 20, paddingBottom: 24, alignItems: "center", overflow: "hidden" },
+  qrModalSub: { fontSize: 13, textAlign: "center", paddingHorizontal: 24, marginBottom: 4 },
+  qrBox: { padding: 16, backgroundColor: "#fff", borderRadius: 16, marginVertical: 12 },
+  qrModalUsername: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
+  qrModalClose: { borderRadius: 12, paddingVertical: 13, paddingHorizontal: 40, marginTop: 8, alignSelf: "stretch", marginHorizontal: 24, alignItems: "center" },
   qrModalCloseText: { color: "#fff", fontSize: 15, fontWeight: "700" },
+
+  // QR 탭
+  qrTabBar: { flexDirection: "row", alignSelf: "stretch", borderRadius: 10, margin: 16, marginBottom: 0, padding: 3, borderWidth: 1 },
+  qrTab: { flex: 1, paddingVertical: 8, alignItems: "center", borderRadius: 8 },
+  qrTabText: { fontSize: 14 },
+
+  // 스캔 버튼
+  qrScanBtn: {
+    alignSelf: "stretch",
+    marginHorizontal: 24,
+    marginVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1.5,
+    padding: 24,
+    alignItems: "center",
+    gap: 8,
+  },
+  qrScanIconWrap: { marginBottom: 4 },
+  qrScanBtnLabel: { fontSize: 16, fontWeight: "700" },
+  qrScanBtnSub: { fontSize: 13 },
 });

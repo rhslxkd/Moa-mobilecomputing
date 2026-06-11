@@ -10,6 +10,8 @@ import {
   Animated,
   Alert,
   TextInput,
+  Modal,
+  Pressable,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -21,6 +23,7 @@ import { ChatAPI, ChatRoomDTO } from "@/services/api";
 import { supabase } from "@/lib/supabase";
 
 type FilterType = "all" | "unread" | "gemini";
+type SortType = "latest" | "unread" | "pinned";
 
 interface ChatRoom {
   id: string;
@@ -314,6 +317,10 @@ export default function ChatScreen() {
 
   const [searchVisible, setSearchVisible] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [sortType, setSortType] = useState<SortType>("latest");
+  const [sortVisible, setSortVisible] = useState(false);
+  const [isManaging, setIsManaging] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const handleToggleUnread = (id: string) => {
     setRooms(prev => prev.map(r => r.id === id ? { ...r, unread: r.unread > 0 ? 0 : 1 } : r));
@@ -324,6 +331,31 @@ export default function ChatScreen() {
   const handleTogglePin = (id: string) => {
     setRooms(prev => prev.map(r => r.id === id ? { ...r, isPinned: !r.isPinned } : r));
   };
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
+
+  const handleManageMarkRead = () => {
+    setRooms(prev => prev.map(r => selectedIds.has(r.id) ? { ...r, unread: 0 } : r));
+    setSelectedIds(new Set());
+    setIsManaging(false);
+  };
+
+  const handleManageLeave = () => {
+    Alert.alert("채팅방 나가기", `선택한 ${selectedIds.size}개의 채팅방에서 나가시겠어요?`, [
+      { text: "취소", style: "cancel" },
+      { text: "나가기", style: "destructive", onPress: () => {
+        setRooms(prev => prev.filter(r => !selectedIds.has(r.id)));
+        setSelectedIds(new Set());
+        setIsManaging(false);
+      }},
+    ]);
+  };
+
   const handleLeave = (id: string) => {
     Alert.alert("채팅방 나가기", "이 채팅방에서 나가시겠습니까?", [
       { text: "취소", style: "cancel" },
@@ -334,7 +366,9 @@ export default function ChatScreen() {
   const sortedRooms = [...rooms].sort((a, b) => {
     if (a.isPinned && !b.isPinned) return -1;
     if (!a.isPinned && b.isPinned) return 1;
-    return 0;
+    if (sortType === "unread") return (b.unread || 0) - (a.unread || 0);
+    if (sortType === "pinned") return (b.isPinned ? 1 : 0) - (a.isPinned ? 1 : 0);
+    return 0; // latest: API 순서 유지
   });
 
   const filtered = sortedRooms
@@ -352,22 +386,32 @@ export default function ChatScreen() {
       {/* 헤더 */}
       <View style={[styles.header, { backgroundColor: C.bgCard }]}>
         <View style={styles.headerLeft}>
-          <Text style={[styles.headerTitle, { color: C.text }]}>채팅</Text>
+          {isManaging ? (
+            <Text style={[styles.headerTitle, { color: C.text }]}>
+              {selectedIds.size > 0 ? `${selectedIds.size}개 선택` : "채팅방 관리"}
+            </Text>
+          ) : (
+            <Text style={[styles.headerTitle, { color: C.text }]}>채팅</Text>
+          )}
         </View>
         <View style={styles.headerRight}>
-          <TouchableOpacity
-            style={styles.iconBtn}
-            activeOpacity={0.7}
-            onPress={() => { setSearchVisible(v => !v); if (searchVisible) setSearchQuery(""); }}
-          >
-            <Icon name="search" size={24} color={searchVisible ? C.primary : C.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => router.push('/(screens)/AddChat')}>
-            <Icon name="add" size={24} color={C.text} />
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => router.push('/(screens)/settings')}>
-            <Icon name="settings" size={24} color={C.text} />
-          </TouchableOpacity>
+          {isManaging ? (
+            <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => { setIsManaging(false); setSelectedIds(new Set()); }}>
+              <Text style={{ color: C.primary, fontSize: 16, fontWeight: '600' }}>완료</Text>
+            </TouchableOpacity>
+          ) : (
+            <>
+              <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => { setSearchVisible(v => !v); if (searchVisible) setSearchQuery(""); }}>
+                <Icon name="search" size={24} color={searchVisible ? C.primary : C.text} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => router.push('/(screens)/AddChat')}>
+                <Icon name="add" size={24} color={C.text} />
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.iconBtn} activeOpacity={0.7} onPress={() => setSortVisible(true)}>
+                <Icon name="settings" size={24} color={C.text} />
+              </TouchableOpacity>
+            </>
+          )}
         </View>
       </View>
 
@@ -421,21 +465,44 @@ export default function ChatScreen() {
       {isLoading ? (
         <SkeletonList />
       ) : (
+        <>
         <FlatList
           data={filtered}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <ChatRoomItem
-              room={item}
-              onPress={() => router.push({ pathname: `/(screens)/chat/${item.id}`, params: { name: item.name } } as any)}
-              onToggleUnread={handleToggleUnread}
-              onToggleMute={handleToggleMute}
-              onTogglePin={handleTogglePin}
-              onLeave={handleLeave}
-            />
+            isManaging ? (
+              <TouchableOpacity
+                onPress={() => toggleSelect(item.id)}
+                activeOpacity={0.7}
+                style={[styles.roomItem, { backgroundColor: selectedIds.has(item.id) ? C.primary + '14' : C.bgCard }]}
+              >
+                <View style={[styles.manageCheckbox, {
+                  borderColor: selectedIds.has(item.id) ? C.primary : C.border,
+                  backgroundColor: selectedIds.has(item.id) ? C.primary : 'transparent',
+                }]}>
+                  {selectedIds.has(item.id) && <Text style={{ color: '#fff', fontSize: 12, fontWeight: '700' }}>✓</Text>}
+                </View>
+                <View style={{ marginRight: 16 }}>
+                  <KakaoGroupAvatar memberCount={item.memberCount} bgCard={C.bgCard} />
+                </View>
+                <View style={styles.roomInfo}>
+                  <Text style={[styles.roomName, { color: C.text }]} numberOfLines={1}>{item.name}</Text>
+                  <Text style={[styles.lastMessage, { color: C.textMuted }]} numberOfLines={1}>{item.lastMessage}</Text>
+                </View>
+              </TouchableOpacity>
+            ) : (
+              <ChatRoomItem
+                room={item}
+                onPress={() => router.push({ pathname: `/(screens)/chat/${item.id}`, params: { name: item.name } } as any)}
+                onToggleUnread={handleToggleUnread}
+                onToggleMute={handleToggleMute}
+                onTogglePin={handleTogglePin}
+                onLeave={handleLeave}
+              />
+            )
           )}
           style={{ flex: 1, backgroundColor: C.bgCard }}
-          contentContainerStyle={[{ paddingBottom: 40 }, filtered.length === 0 ? styles.emptyContainer : undefined]}
+          contentContainerStyle={[{ paddingBottom: isManaging ? 100 : 40 }, filtered.length === 0 ? styles.emptyContainer : undefined]}
           ListEmptyComponent={
             <View style={{ alignItems: 'center', marginTop: 80 }}>
               <Text style={{ fontSize: 18, fontWeight: '700', color: C.text, marginBottom: 8 }}>모두 읽었어요!</Text>
@@ -443,7 +510,77 @@ export default function ChatScreen() {
             </View>
           }
         />
+
+        {/* 관리 모드 하단 액션 바 */}
+        {isManaging && (
+          <View style={[styles.manageBar, { backgroundColor: C.bgCard, borderTopColor: C.border }]}>
+            <TouchableOpacity
+              style={[styles.manageBarBtn, { opacity: selectedIds.size === 0 ? 0.4 : 1 }]}
+              onPress={handleManageMarkRead}
+              disabled={selectedIds.size === 0}
+              activeOpacity={0.7}
+            >
+              <Icon name="checkbox" size={20} color={C.primary} />
+              <Text style={[styles.manageBarText, { color: C.primary }]}>읽음 처리</Text>
+            </TouchableOpacity>
+            <View style={[styles.manageBarDivider, { backgroundColor: C.border }]} />
+            <TouchableOpacity
+              style={[styles.manageBarBtn, { opacity: selectedIds.size === 0 ? 0.4 : 1 }]}
+              onPress={handleManageLeave}
+              disabled={selectedIds.size === 0}
+              activeOpacity={0.7}
+            >
+              <Icon name="back" size={20} color="#FF3B30" />
+              <Text style={[styles.manageBarText, { color: '#FF3B30' }]}>나가기</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+        </>
       )}
+
+      {/* 정렬 드롭다운 */}
+      <Modal visible={sortVisible} transparent animationType="fade" onRequestClose={() => setSortVisible(false)}>
+        <Pressable style={styles.sortBackdrop} onPress={() => setSortVisible(false)}>
+          <Pressable style={[styles.sortSheet, { backgroundColor: C.bgCard }]}>
+            <Text style={[styles.sortTitle, { color: C.textMuted }]}>채팅방 정렬</Text>
+            {/* 정렬 옵션 */}
+            {([
+              { key: "latest", label: "최신 메시지 순" },
+              { key: "unread", label: "안 읽은 메시지 순" },
+              { key: "pinned", label: "즐겨찾기 순" },
+            ] as { key: SortType; label: string }[]).map((opt) => (
+              <TouchableOpacity
+                key={opt.key}
+                style={[styles.sortItem, { borderBottomColor: C.border }]}
+                onPress={() => { setSortType(opt.key); setSortVisible(false); }}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.sortItemText, { color: C.text }]}>{opt.label}</Text>
+                <Icon name="checkbox" size={18} color={C.primary} active={sortType === opt.key} />
+              </TouchableOpacity>
+            ))}
+
+            {/* 두꺼운 구분선 */}
+            <View style={[styles.sortDivider, { backgroundColor: C.bg }]} />
+
+            {/* 기능 메뉴 */}
+            <TouchableOpacity
+              style={[styles.sortItem, { borderBottomColor: C.border }]}
+              onPress={() => { setSortVisible(false); setIsManaging(true); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sortItemText, { color: C.text }]}>채팅방 관리</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.sortItem, { borderBottomWidth: 0 }]}
+              onPress={() => { setSortVisible(false); router.push('/(screens)/settings'); }}
+              activeOpacity={0.7}
+            >
+              <Text style={[styles.sortItemText, { color: C.text }]}>전체 설정</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -469,6 +606,17 @@ const styles = StyleSheet.create({
   emptyContainer: { flex: 1, alignItems: "center", paddingTop: 80 },
   searchBar: { flexDirection: "row", alignItems: "center", gap: 10, paddingHorizontal: 20, paddingVertical: 10, borderBottomWidth: StyleSheet.hairlineWidth },
   searchInput: { flex: 1, fontSize: 15, paddingVertical: 0 },
+  sortBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'flex-start', alignItems: 'flex-end', paddingTop: 56, paddingRight: 16 },
+  sortSheet: { borderRadius: 16, minWidth: 220, overflow: 'hidden', shadowColor: '#000', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 16, elevation: 8 },
+  sortTitle: { fontSize: 12, fontWeight: '600', paddingHorizontal: 20, paddingTop: 14, paddingBottom: 8 },
+  sortItem: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingVertical: 16, borderBottomWidth: StyleSheet.hairlineWidth },
+  sortItemText: { fontSize: 15, fontWeight: '500' },
+  sortDivider: { height: 8 },
+  manageCheckbox: { width: 24, height: 24, borderRadius: 12, borderWidth: 2, alignItems: 'center', justifyContent: 'center', marginRight: 12, flexShrink: 0 },
+  manageBar: { position: 'absolute', bottom: 0, left: 0, right: 0, height: 72, flexDirection: 'row', alignItems: 'center', borderTopWidth: StyleSheet.hairlineWidth },
+  manageBarBtn: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, height: '100%' },
+  manageBarText: { fontSize: 15, fontWeight: '600' },
+  manageBarDivider: { width: 1, height: 28 },
   leftActions: { flexDirection: 'row' },
   rightActions: { flexDirection: 'row' },
   actionBtn: { width: 60, height: '100%', alignItems: 'center', justifyContent: 'center' },

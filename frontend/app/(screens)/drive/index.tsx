@@ -2,7 +2,7 @@
  * app/(screens)/drive/index.tsx
  */
 
-import React, { useState, useCallback } from "react";
+import React, { useState, useCallback, useEffect } from "react";
 import {
   View,
   Text,
@@ -13,14 +13,16 @@ import {
   Modal,
   TextInput,
   Alert,
+  Share,
   KeyboardAvoidingView,
   Platform,
   StatusBar,
   ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
 import Svg, { Path, G } from "react-native-svg";
+import { FOLDER_PALETTE, loadAllFolderColors, saveFolderColor, getFolderColor } from "@/utils/folderColors";
 import { BlurView } from "expo-blur";
 import { useTheme, useIsDark } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
@@ -32,7 +34,7 @@ const { width: SW } = Dimensions.get("window");
 const H_PAD = 21;
 const COL = 3;
 const COL_GAP = 0;
-const ITEM_W = (SW - H_PAD * 2) / COL;
+const ITEM_W = Math.floor((SW - H_PAD * 2) / COL);
 
 // ── 폴더 SVG 아이콘 ────────────────────────────────────────
 function FolderSvg({ color, size = 92 }: { color: string; size?: number }) {
@@ -55,14 +57,14 @@ function FolderSvg({ color, size = 92 }: { color: string; size?: number }) {
 // ── 아이콘 모음 ─────────────────────────────────────────────
 function SearchIcon({ color }: { color: string }) {
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <Path d="M21 21L16.514 16.506M19 11C19 15.418 15.418 19 11 19C6.582 19 3 15.418 3 11C3 6.582 6.582 3 11 3C15.418 3 19 6.582 19 11Z" stroke={color} strokeWidth={2} strokeLinecap="round" />
     </Svg>
   );
 }
 function ExportIcon({ color }: { color: string }) {
   return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
+    <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
       <Path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke={color} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
     </Svg>
   );
@@ -78,13 +80,6 @@ function ListIcon({ color }: { color: string }) {
   return (
     <Svg width={18} height={18} viewBox="0 0 18 18" fill="none">
       <Path d="M6 4.5h10M6 9h10M6 13.5h10M2 4.5h.01M2 9h.01M2 13.5h.01" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
-    </Svg>
-  );
-}
-function SortIcon({ color }: { color: string }) {
-  return (
-    <Svg width={24} height={24} viewBox="0 0 24 24" fill="none">
-      <Path d="M5 7H19M5 12H15M5 17H11" stroke={color} strokeWidth={1.5} strokeLinecap="round" />
     </Svg>
   );
 }
@@ -311,6 +306,72 @@ function DownloadSheet({ visible, count, firstName, onClose, onConfirm }: Downlo
   );
 }
 
+// ── 폴더 색상 변경 시트 ───────────────────────────────────
+interface FolderColorSheetProps {
+  visible: boolean;
+  currentColor: string;
+  folderName: string;
+  onClose: () => void;
+  onSelect: (color: string) => void;
+}
+function FolderColorSheet({ visible, currentColor, folderName, onClose, onSelect }: FolderColorSheetProps) {
+  const C = useTheme();
+  return (
+    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
+      <View style={{ flex: 1, justifyContent: "flex-end" }}>
+        <TouchableOpacity style={cs.backdrop} activeOpacity={1} onPress={onClose} />
+        <View style={[cs.sheet, { backgroundColor: C.bgCard }]}>
+          <View style={cs.handleWrap}><View style={[cs.handle, { backgroundColor: C.border }]} /></View>
+          <Text style={[cs.title, { color: C.text }]}>폴더 색상 변경</Text>
+          <Text style={[cs.sub, { color: C.textMuted }]} numberOfLines={1}>{folderName}</Text>
+          <View style={cs.preview}>
+            <FolderSvg color={currentColor} size={72} />
+          </View>
+          <View style={cs.palette}>
+            {FOLDER_PALETTE.map(({ color, label }) => {
+              const selected = currentColor === color;
+              return (
+                <TouchableOpacity key={color} style={cs.swatchWrap} activeOpacity={0.8} onPress={() => onSelect(color)}>
+                  <View style={[cs.swatch, { backgroundColor: color, borderWidth: selected ? 3 : 0, borderColor: "#fff" }]}>
+                    {selected && (
+                      <Svg width={16} height={16} viewBox="0 0 16 16" fill="none">
+                        <Path d="M3 8l3.5 3.5 6.5-7" stroke="#fff" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round" />
+                      </Svg>
+                    )}
+                  </View>
+                  <Text style={[cs.swatchLabel, { color: C.textMuted }]}>{label}</Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+          <TouchableOpacity style={[cs.closeBtn, { borderColor: C.border }]} onPress={onClose} activeOpacity={0.7}>
+            <Text style={[cs.closeBtnText, { color: C.textSub }]}>닫기</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+const cs = StyleSheet.create({
+  backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: "rgba(0,0,0,0.45)" },
+  sheet: { borderTopLeftRadius: 24, borderTopRightRadius: 24, paddingHorizontal: 20, paddingBottom: 36 },
+  handleWrap: { alignItems: "center", paddingTop: 12, paddingBottom: 4 },
+  handle: { width: 36, height: 4, borderRadius: 2 },
+  title: { fontSize: 17, fontWeight: "700", textAlign: "center", paddingTop: 8 },
+  sub: { fontSize: 13, textAlign: "center", marginTop: 4, marginBottom: 4 },
+  preview: { alignItems: "center", paddingVertical: 20 },
+  palette: { flexDirection: "row", flexWrap: "wrap", justifyContent: "center", gap: 16, paddingBottom: 24 },
+  swatchWrap: { alignItems: "center", gap: 6 },
+  swatch: {
+    width: 48, height: 48, borderRadius: 24,
+    alignItems: "center", justifyContent: "center",
+    shadowColor: "#000", shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.18, shadowRadius: 4, elevation: 3,
+  },
+  swatchLabel: { fontSize: 10, fontWeight: "500" },
+  closeBtn: { borderWidth: 1, borderRadius: 14, paddingVertical: 14, alignItems: "center" },
+  closeBtnText: { fontSize: 15, fontWeight: "600" },
+});
+
 // ── 메인 화면 ─────────────────────────────────────────────
 type ViewMode = "grid" | "list";
 type FilterType = "전체" | "프로젝트 폴더만" | "개인 폴더만";
@@ -322,6 +383,7 @@ export default function DriveScreen() {
   const isDark = useIsDark();
   const router = useRouter();
   const { projects } = useProject();
+  const insets = useSafeAreaInsets();
 
   const [viewMode, setViewMode] = useState<ViewMode>("grid");
   const [filter, setFilter] = useState<FilterType>("전체");
@@ -329,6 +391,18 @@ export default function DriveScreen() {
   const [personalFolders, setPersonalFolders] = useState<PersonalFolder[]>([]);
   const [newFolderVisible, setNewFolderVisible] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 검색
+  const [searchVisible, setSearchVisible] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+
+  // 폴더 색상
+  const [folderColors, setFolderColors] = useState<Record<string, string>>({});
+  const [colorSheetFolder, setColorSheetFolder] = useState<{ id: string; name: string } | null>(null);
+
+  useEffect(() => {
+    loadAllFolderColors().then(colors => setFolderColors(colors));
+  }, []);
 
   const loadFolders = useCallback(() => {
     setIsLoading(true);
@@ -342,14 +416,10 @@ export default function DriveScreen() {
 
   useFocusEffect(loadFolders);
 
-  // 다중 선택
+  // ── 선택 모드 ──
+  const [isSelectMode, setIsSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
-  const isSelecting = selected.size > 0;
-
-  // 컨텍스트 메뉴
-  const [ctxVisible, setCtxVisible] = useState(false);
   const [deleteVisible, setDeleteVisible] = useState(false);
-  const [downloadVisible, setDownloadVisible] = useState(false);
 
   const FILTER_OPTIONS: FilterType[] = ["전체", "프로젝트 폴더만", "개인 폴더만"];
 
@@ -357,9 +427,33 @@ export default function DriveScreen() {
   const allFolders = [
     ...(filter !== "개인 폴더만" ? projectFolders : []),
     ...(filter !== "프로젝트 폴더만" ? personalFolders : []),
-  ];
+  ].filter(f => !searchQuery.trim() || f.name.toLowerCase().includes(searchQuery.trim().toLowerCase()));
+
+  const handleExport = async () => {
+    if (allFolders.length === 0) {
+      Alert.alert("내보내기", "내보낼 폴더가 없어요.");
+      return;
+    }
+    const lines = allFolders.map((f, i) =>
+      `${i + 1}. ${f.name}${f.isPersonal ? "" : " (프로젝트)"}`
+    );
+    const text = `📁 MOA 드라이브 폴더 목록\n\n${lines.join("\n")}`;
+    try {
+      await Share.share({ message: text, title: "MOA 드라이브 폴더 목록" });
+    } catch {}
+  };
 
   const selectedFolders = allFolders.filter(f => selected.has(f.id));
+
+  const enterSelectMode = (firstId?: string) => {
+    setIsSelectMode(true);
+    setSelected(firstId ? new Set([firstId]) : new Set());
+  };
+
+  const exitSelectMode = () => {
+    setIsSelectMode(false);
+    setSelected(new Set());
+  };
 
   const toggleSelect = (id: string) => {
     setSelected(prev => {
@@ -369,8 +463,10 @@ export default function DriveScreen() {
     });
   };
 
+  const selectAll = () => setSelected(new Set(allFolders.map(f => f.id)));
+
   const handleFolderPress = (id: string, name: string, isPersonal: boolean) => {
-    if (isSelecting) { toggleSelect(id); return; }
+    if (isSelectMode) { toggleSelect(id); return; }
     router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: id, folderName: name, isPersonal: isPersonal ? "1" : "0" } } as any);
   };
 
@@ -379,88 +475,129 @@ export default function DriveScreen() {
     loadFolders();
   };
 
-  const handleDeleteSelected = async () => {
-    // 개인 폴더만 삭제 가능 (프로젝트 폴더는 제외)
-    const personalIds = personalFolders.filter(f => selected.has(f.id)).map(f => f.id);
-    await Promise.all(personalIds.map(id => DriveAPI.deleteFolder(id).catch(() => {})));
-    setSelected(new Set());
-    loadFolders();
+  // 개별 색상 변경 (비선택 모드에서 ··· 버튼)
+  const handleColorChange = async (color: string) => {
+    if (!colorSheetFolder) return;
+    await saveFolderColor(colorSheetFolder.id, color);
+    setFolderColors(prev => ({ ...prev, [colorSheetFolder.id]: color }));
+    setColorSheetFolder(null);
   };
 
-  const headerTitle = isSelecting
-    ? `일괄 관리 · ${selected.size}`
-    : `폴더 · ${filter}`;
+  // 선택 모드에서 색상 일괄 변경
+  const handleBulkColorChange = async (color: string) => {
+    await Promise.all([...selected].map(id => saveFolderColor(id, color)));
+    const updates: Record<string, string> = {};
+    selected.forEach(id => { updates[id] = color; });
+    setFolderColors(prev => ({ ...prev, ...updates }));
+    setColorSheetFolder(null);
+  };
+
+  const folderColor = (id: string, isPersonal: boolean) =>
+    folderColors[id] ?? (isPersonal ? "#E2B93B" : "#00A9EC");
+
+  const handleDeleteSelected = async () => {
+    const personalIds = personalFolders.filter(f => selected.has(f.id)).map(f => f.id);
+    await Promise.all(personalIds.map(id => DriveAPI.deleteFolder(id).catch(() => {})));
+    exitSelectMode();
+    loadFolders();
+  };
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top"]}>
       {/* ── 헤더 ── */}
       <View style={[s.header, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
-        <TouchableOpacity onPress={() => { if (isSelecting) setSelected(new Set()); else router.back(); }} style={s.iconBtn} activeOpacity={0.7}>
-          <Icon name="back" size={22} color={C.text} />
-        </TouchableOpacity>
-        <View style={s.headerCenter}>
-          <MoaLogo size={24} variant="primary" />
-          <Text style={[s.headerTitle, { color: C.text }]}>{headerTitle}</Text>
-        </View>
-        <View style={s.headerRight}>
-          {isSelecting ? (
-            <>
-              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => setDownloadVisible(true)}>
-                <DownloadIcon color={C.textSub} />
+        {isSelectMode ? (
+          /* 선택 모드 헤더 */
+          <>
+            <TouchableOpacity onPress={exitSelectMode} style={s.iconBtn} activeOpacity={0.7}>
+              <Icon name="close" size={20} color={C.text} />
+            </TouchableOpacity>
+            <Text style={[s.headerTitle, { color: C.text, flex: 1, textAlign: "center" }]}>
+              {selected.size > 0 ? `${selected.size}개 선택됨` : "항목을 선택하세요"}
+            </Text>
+            <TouchableOpacity
+              onPress={selected.size === allFolders.length && allFolders.length > 0 ? exitSelectMode : selectAll}
+              style={[s.iconBtn, { width: 60 }]}
+              activeOpacity={0.7}
+            >
+              <Text style={{ color: C.primary, fontSize: 13, fontWeight: "600" }}>
+                {selected.size === allFolders.length && allFolders.length > 0 ? "전체해제" : "전체선택"}
+              </Text>
+            </TouchableOpacity>
+          </>
+        ) : (
+          /* 일반 모드 헤더 */
+          <>
+            <TouchableOpacity onPress={() => router.back()} style={s.iconBtn} activeOpacity={0.7}>
+              <Icon name="back" size={22} color={C.text} />
+            </TouchableOpacity>
+            <View style={s.headerCenter}>
+              <MoaLogo size={24} variant="primary" />
+              <Text style={[s.headerTitle, { color: C.text }]}>폴더 · {filter}</Text>
+            </View>
+            <View style={s.headerRight}>
+              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => { setSearchVisible(v => !v); setSearchQuery(""); }}>
+                <SearchIcon color={searchVisible ? C.primary : C.textSub} />
               </TouchableOpacity>
-              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => setCtxVisible(true)}>
-                <Icon name="option" size={22} color={C.textSub} />
-              </TouchableOpacity>
-            </>
-          ) : (
-            <>
-              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => Alert.alert("검색", "폴더 검색은 준비 중인 기능이에요.")}>
-                <SearchIcon color={C.textSub} />
-              </TouchableOpacity>
-              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => Alert.alert("내보내기", "내보내기는 준비 중인 기능이에요.")}>
+              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={handleExport}>
                 <ExportIcon color={C.textSub} />
+              </TouchableOpacity>
+              <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => enterSelectMode()}>
+                {/* 체크 아이콘 */}
+                <Svg width={22} height={22} viewBox="0 0 24 24" fill="none">
+                  <Path d="M20 6L9 17L4 12" stroke={C.textSub} strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" />
+                </Svg>
               </TouchableOpacity>
               <TouchableOpacity style={s.iconBtn} activeOpacity={0.7} onPress={() => setNewFolderVisible(true)}>
                 <Icon name="add" size={22} color={C.textSub} />
               </TouchableOpacity>
-            </>
-          )}
-        </View>
+            </View>
+          </>
+        )}
       </View>
 
+      {/* ── 검색 바 ── */}
+      {searchVisible && !isSelectMode && (
+        <View style={[s.searchBarWrap, { backgroundColor: C.bgCard, borderBottomColor: C.border }]}>
+          <View style={[s.searchBarInner, { backgroundColor: C.bg, borderColor: C.border }]}>
+            <SearchIcon color={C.textMuted} />
+            <TextInput
+              style={[s.searchInput, { color: C.text }]}
+              placeholder="폴더 이름 검색"
+              placeholderTextColor={C.textMuted}
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+              autoFocus
+              returnKeyType="search"
+              clearButtonMode="while-editing"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery("")} activeOpacity={0.7}>
+                <Icon name="close" size={16} color={C.textMuted} />
+              </TouchableOpacity>
+            )}
+          </View>
+        </View>
+      )}
+
       <View style={{ flex: 1, position: "relative" }}>
-        {/* ── 뷰 전환 토글 + 정렬/필터 바 (플로팅) ── */}
+        {/* ── 뷰 전환 토글 + 필터 바 (플로팅) ── */}
         <View style={s.toolBar} pointerEvents="box-none">
-          {/* 뷰 전환 토글 */}
           <View style={[s.togglePill, { backgroundColor: C.bgCard, borderColor: C.border }]}>
-            <TouchableOpacity
-              style={[s.toggleBtn, viewMode === "grid" && s.toggleActive]}
-              onPress={() => setViewMode("grid")}
-              activeOpacity={0.8}
-            >
-              <GridIcon color={viewMode === "grid" ? "#ffffff" : "#333333"} />
+            <TouchableOpacity style={[s.toggleBtn, viewMode === "grid" && s.toggleActive]} onPress={() => setViewMode("grid")} activeOpacity={0.8}>
+              <GridIcon color={viewMode === "grid" ? "#ffffff" : C.textMuted} />
             </TouchableOpacity>
-            <TouchableOpacity
-              style={[s.toggleBtn, viewMode === "list" && s.toggleActive]}
-              onPress={() => setViewMode("list")}
-              activeOpacity={0.8}
-            >
-              <ListIcon color={viewMode === "list" ? "#ffffff" : "#333333"} />
+            <TouchableOpacity style={[s.toggleBtn, viewMode === "list" && s.toggleActive]} onPress={() => setViewMode("list")} activeOpacity={0.8}>
+              <ListIcon color={viewMode === "list" ? "#ffffff" : C.textMuted} />
             </TouchableOpacity>
           </View>
-
           <View style={{ flex: 1 }} />
-
-          {/* 정렬/필터 아이콘 */}
-          <TouchableOpacity style={s.toolBtn} activeOpacity={0.7}>
-            <SortIcon color={C.textMuted} />
-          </TouchableOpacity>
-          <TouchableOpacity style={s.toolBtn} activeOpacity={0.7} onPress={() => setFilterMenuOpen(v => !v)}>
-            <FilterIcon color={filterMenuOpen ? "#00A9EC" : C.textMuted} />
-          </TouchableOpacity>
-
-          {/* 필터 드롭다운 */}
-          {filterMenuOpen && (
+          {!isSelectMode && (
+            <TouchableOpacity style={s.toolBtn} activeOpacity={0.7} onPress={() => setFilterMenuOpen(v => !v)}>
+              <FilterIcon color={filterMenuOpen ? "#00A9EC" : C.textMuted} />
+            </TouchableOpacity>
+          )}
+          {filterMenuOpen && !isSelectMode && (
             <>
               <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setFilterMenuOpen(false)} />
               <View style={s.dropdownWrap}>
@@ -486,21 +623,6 @@ export default function DriveScreen() {
           )}
         </View>
 
-        {/* ── 컨텍스트 메뉴 ── */}
-        {isSelecting && (
-          <View style={[{ position: "absolute", right: 0, top: 0, left: 0, bottom: 0, zIndex: 500 }]} pointerEvents="box-none">
-            <ContextMenu
-              visible={ctxVisible}
-              isDark={isDark}
-              count={selected.size}
-              onMove={() => Alert.alert("이동", "준비 중입니다.")}
-              onCopy={() => Alert.alert("복제", "준비 중입니다.")}
-              onDelete={() => { setDeleteVisible(true); }}
-              onClose={() => setCtxVisible(false)}
-            />
-          </View>
-        )}
-
         {/* ── 컨텐츠 ── */}
         <ScrollView
           contentContainerStyle={[viewMode === "grid" ? s.gridContent : s.listContent, { paddingTop: 50 }]}
@@ -513,23 +635,38 @@ export default function DriveScreen() {
           ) : allFolders.length === 0 ? (
             <View style={s.emptyWrap}>
               <FolderSvg color={C.textMuted} size={72} />
-              <Text style={[s.emptyTitle, { color: C.text }]}>폴더가 없어요</Text>
-              <Text style={[s.emptyDesc, { color: C.textMuted }]}>+ 버튼을 눌러 새 폴더를 만들어보세요</Text>
+              {searchQuery.trim() ? (
+                <>
+                  <Text style={[s.emptyTitle, { color: C.text }]}>검색 결과가 없어요</Text>
+                  <Text style={[s.emptyDesc, { color: C.textMuted }]}>"{searchQuery}" 와 일치하는 폴더가 없어요</Text>
+                </>
+              ) : (
+                <>
+                  <Text style={[s.emptyTitle, { color: C.text }]}>폴더가 없어요</Text>
+                  <Text style={[s.emptyDesc, { color: C.textMuted }]}>+ 버튼을 눌러 새 폴더를 만들어보세요</Text>
+                </>
+              )}
             </View>
           ) : viewMode === "grid" ? (
             <View style={s.grid}>
               {allFolders.map(folder => {
                 const isSelected = selected.has(folder.id);
-                const folderColor = folder.isPersonal ? "#E2B93B" : "#00A9EC";
+                const fColor = folderColor(folder.id, folder.isPersonal);
                 return (
                   <TouchableOpacity
                     key={folder.id}
-                    style={[s.gridItem, isSelected && s.gridItemSelected]}
+                    style={[s.gridItem, isSelected && { backgroundColor: C.primary + "14", borderRadius: 12 }]}
                     activeOpacity={0.7}
                     onPress={() => handleFolderPress(folder.id, folder.name, folder.isPersonal)}
-                    onLongPress={() => toggleSelect(folder.id)}
+                    onLongPress={() => { enterSelectMode(folder.id); }}
                   >
-                    <FolderSvg color={folderColor} size={ITEM_W * 0.75} />
+                    {/* 선택 모드 체크박스 */}
+                    {isSelectMode && (
+                      <View style={s.gridCheckWrap}>
+                        <Icon name="checkbox" size={22} color={C.primary} active={isSelected} />
+                      </View>
+                    )}
+                    <FolderSvg color={fColor} size={ITEM_W * 0.75} />
                     <Text style={[s.folderName, { color: C.text }]} numberOfLines={2}>{folder.name}</Text>
                     <Text style={[s.folderCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>
                   </TouchableOpacity>
@@ -539,29 +676,60 @@ export default function DriveScreen() {
           ) : (
             allFolders.map(folder => {
               const isSelected = selected.has(folder.id);
-              const folderColor = folder.isPersonal ? "#E2B93B" : "#00A9EC";
+              const fColor = folderColor(folder.id, folder.isPersonal);
               return (
                 <TouchableOpacity
                   key={folder.id}
-                  style={[s.listRow, { backgroundColor: C.bgCard, borderBottomColor: C.border }, isSelected && { backgroundColor: C.primary + "1A" }]}
+                  style={[s.listRow, { backgroundColor: C.bgCard, borderBottomColor: C.border }, isSelected && { backgroundColor: C.primary + "14" }]}
                   activeOpacity={0.7}
                   onPress={() => handleFolderPress(folder.id, folder.name, folder.isPersonal)}
-                  onLongPress={() => toggleSelect(folder.id)}
+                  onLongPress={() => { enterSelectMode(folder.id); }}
                 >
-                  <FolderSvg color={folderColor} size={44} />
+                  {isSelectMode && (
+                    <Icon name="checkbox" size={22} color={C.primary} active={isSelected} />
+                  )}
+                  <FolderSvg color={fColor} size={44} />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.listName, { color: C.text }]} numberOfLines={1}>{folder.name}</Text>
                     <Text style={[s.listCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>
                   </View>
-                  <TouchableOpacity style={s.listActionBtn} activeOpacity={0.7} onPress={() => Alert.alert("다운로드", "파일을 다운로드합니다.")}>
-                    <DownloadIcon color={C.textMuted} />
-                  </TouchableOpacity>
                 </TouchableOpacity>
               );
             })
           )}
         </ScrollView>
       </View>
+
+      {/* ── 선택 모드 하단 액션 바 ── */}
+      {isSelectMode && (
+        <View style={[s.actionBar, { backgroundColor: C.bgCard, borderTopColor: C.border, paddingBottom: insets.bottom + 12 }]}>
+          {[
+            { icon: "🎨", label: "색상", onPress: () => {
+                if (selected.size === 0) { Alert.alert("항목 선택", "색상을 변경할 폴더를 선택하세요."); return; }
+                const firstId = [...selected][0];
+                const first = allFolders.find(f => f.id === firstId);
+                setColorSheetFolder({ id: firstId, name: selected.size > 1 ? `${selected.size}개 폴더` : (first?.name ?? "") });
+            }},
+            { icon: "📂", label: "이동", onPress: () => {
+                if (selected.size === 0) { Alert.alert("항목 선택", "이동할 폴더를 선택하세요."); return; }
+                Alert.alert("이동", "이동 기능은 준비 중이에요.");
+            }},
+            { icon: "📋", label: "복사", onPress: () => {
+                if (selected.size === 0) { Alert.alert("항목 선택", "복사할 폴더를 선택하세요."); return; }
+                Alert.alert("복사", "복사 기능은 준비 중이에요.");
+            }},
+            { icon: "🗑️", label: "삭제", onPress: () => {
+                if (selected.size === 0) { Alert.alert("항목 선택", "삭제할 폴더를 선택하세요."); return; }
+                setDeleteVisible(true);
+            }, danger: true },
+          ].map(item => (
+            <TouchableOpacity key={item.label} style={s.actionItem} activeOpacity={0.7} onPress={item.onPress}>
+              <Text style={s.actionIcon}>{item.icon}</Text>
+              <Text style={[s.actionLabel, { color: (item as any).danger ? "#EF4444" : C.text }]}>{item.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      )}
 
       {/* 새 폴더 바텀시트 */}
       <NewFolderSheet
@@ -580,13 +748,13 @@ export default function DriveScreen() {
         onConfirm={handleDeleteSelected}
       />
 
-      {/* 다운로드 확인 */}
-      <DownloadSheet
-        visible={downloadVisible}
-        count={selected.size}
-        firstName={selectedFolders[0]?.name ?? ""}
-        onClose={() => setDownloadVisible(false)}
-        onConfirm={() => Alert.alert("다운로드 시작", "준비 중입니다.")}
+      {/* 폴더 색상 변경 (선택 모드 일괄) */}
+      <FolderColorSheet
+        visible={!!colorSheetFolder}
+        currentColor={colorSheetFolder ? folderColor([...selected][0] ?? "", false) : "#00A9EC"}
+        folderName={colorSheetFolder?.name ?? ""}
+        onClose={() => setColorSheetFolder(null)}
+        onSelect={handleBulkColorChange}
       />
     </SafeAreaView>
   );
@@ -631,7 +799,9 @@ const s = StyleSheet.create({
   // 그리드
   gridContent: { paddingHorizontal: H_PAD, paddingBottom: 40 },
   grid: { flexDirection: "row", flexWrap: "wrap" },
-  gridItem: { width: ITEM_W, alignItems: "center", paddingVertical: 12, paddingHorizontal: 8 },
+  gridItem: { width: ITEM_W, alignItems: "center", paddingVertical: 12, paddingHorizontal: 8, position: "relative" },
+  gridColorBtn: { position: "absolute", top: 8, right: 8, width: 28, height: 28, alignItems: "center", justifyContent: "center", zIndex: 10 },
+  gridCheckWrap: { position: "absolute", top: 6, right: 6, zIndex: 10 },
   gridItemSelected: { backgroundColor: "rgba(0,169,236,0.08)", borderRadius: 12 },
   folderName: { fontSize: 12, fontWeight: "500", color: "#111111", textAlign: "center", marginTop: 8, lineHeight: 16 },
   folderCount: { fontSize: 10, fontWeight: "500", color: "#999999", textAlign: "center", marginTop: 2 },
@@ -652,4 +822,37 @@ const s = StyleSheet.create({
   emptyWrap: { alignItems: "center", paddingTop: 80, gap: 10 },
   emptyTitle: { fontSize: 16, fontWeight: "700" },
   emptyDesc: { fontSize: 13, color: "#999999" },
+
+  // 검색 바
+  searchBarWrap: {
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  searchBarInner: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    borderRadius: 12,
+    borderWidth: 1,
+    paddingHorizontal: 12,
+    paddingVertical: 9,
+  },
+  searchInput: { flex: 1, fontSize: 14 },
+
+  // 선택 모드 하단 액션 바
+  actionBar: {
+    flexDirection: "row",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    paddingTop: 12,
+  },
+  actionItem: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+    paddingVertical: 4,
+  },
+  actionIcon: { fontSize: 24 },
+  actionLabel: { fontSize: 11, fontWeight: "600" },
 });
