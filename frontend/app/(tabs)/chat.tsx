@@ -327,7 +327,15 @@ export default function ChatScreen() {
   const handleLeave = (id: string) => {
     Alert.alert("채팅방 나가기", "이 채팅방에서 나가시겠습니까?", [
       { text: "취소", style: "cancel" },
-      { text: "나가기", style: "destructive", onPress: () => setRooms(prev => prev.filter(r => r.id !== id)) }
+      {
+        text: "나가기", style: "destructive",
+        onPress: async () => {
+          try {
+            await ChatAPI.leaveRoom(id);
+          } catch {}
+          setRooms(prev => prev.filter(r => r.id !== id));
+        },
+      },
     ]);
   };
 

@@ -62,26 +62,56 @@ def list_notifications(token: str) -> list[NotificationResponse]:
     user = _get_user(token)
     read_ids = _read_ids(user.id)
 
-    projects = (
-        supabase_admin.table("projects")
-        .select("id, name")
-        .eq("owner_id", user.id)
+    # 내가 오너이거나 accepted 멤버인 프로젝트 모두 포함
+    owned = (
+        supabase_admin.table("projects").select("id, name").eq("owner_id", user.id).execute()
+    ).data
+    member_rows = (
+        supabase_admin.table("project_members")
+        .select("project_id")
+        .eq("user_id", user.id)
+        .eq("status", "accepted")
         .execute()
     ).data
-    proj_map = {p["id"]: p["name"] for p in projects}
+    member_proj_ids = [r["project_id"] for r in member_rows]
+    member_projects = []
+    if member_proj_ids:
+        member_projects = (
+            supabase_admin.table("projects").select("id, name").in_("id", member_proj_ids).execute()
+        ).data
+    proj_map = {p["id"]: p["name"] for p in owned + member_projects}
+
+    # 내가 속한 project_members ID → assignee_member_id 조회에 사용
+    my_member_ids: list[str] = []
+    all_member_rows = (
+        supabase_admin.table("project_members")
+        .select("id")
+        .eq("user_id", user.id)
+        .execute()
+    ).data
+    my_member_ids = [r["id"] for r in all_member_rows]
 
     today = date.today()
 
-    # 1) 마감 임박/지난 미완료 todo (지난 것 → 오늘 → 내일 순)
+    # 1) 마감 임박/지난 미완료 todo (내가 owner이거나 담당자인 것)
     todo_notifs: list[tuple[int, NotificationResponse]] = []
-    todos = (
-        supabase_admin.table("todos")
-        .select("*")
-        .eq("owner_id", user.id)
-        .eq("done", False)
-        .execute()
+    todos_owned = (
+        supabase_admin.table("todos").select("*").eq("owner_id", user.id).eq("done", False).execute()
     ).data
-    for t in todos:
+    todos_assigned: list[dict] = []
+    if my_member_ids:
+        todos_assigned = (
+            supabase_admin.table("todos")
+            .select("*")
+            .in_("assignee_member_id", my_member_ids)
+            .eq("done", False)
+            .execute()
+        ).data
+    seen_todo_ids: set[str] = set()
+    for t in todos_owned + todos_assigned:
+        if t["id"] in seen_todo_ids:
+            continue
+        seen_todo_ids.add(t["id"])
         if not t.get("due_date"):
             continue
         try:
@@ -104,17 +134,30 @@ def list_notifications(token: str) -> list[NotificationResponse]:
         )))
     todo_notifs.sort(key=lambda x: x[0])  # 지난 것(음수) 먼저
 
-    # 2) 최근 회의 (최신순, 회의록 생성 알림)
+    # 2) 최근 회의 (내가 owner이거나 출석한 회의)
     meeting_notifs: list[NotificationResponse] = []
-    meetings = (
+    meetings_owned = (
         supabase_admin.table("meetings")
-        .select("*")
-        .eq("owner_id", user.id)
-        .order("created_at", desc=True)
-        .limit(5)
-        .execute()
+        .select("*").eq("owner_id", user.id)
+        .order("created_at", desc=True).limit(5).execute()
     ).data
-    for m in meetings:
+    attended_rows = (
+        supabase_admin.table("meeting_attendance")
+        .select("meeting_id").eq("user_id", user.id).execute()
+    ).data
+    attended_ids = [r["meeting_id"] for r in attended_rows]
+    meetings_attended: list[dict] = []
+    if attended_ids:
+        meetings_attended = (
+            supabase_admin.table("meetings")
+            .select("*").in_("id", attended_ids)
+            .order("created_at", desc=True).limit(5).execute()
+        ).data
+    seen_meeting_ids: set[str] = set()
+    for m in meetings_owned + meetings_attended:
+        if m["id"] in seen_meeting_ids:
+            continue
+        seen_meeting_ids.add(m["id"])
         proj = proj_map.get(m.get("project_id"), "회의")
         meeting_notifs.append(NotificationResponse(
             id=f"meeting-{m['id']}", type="meeting", title="회의록이 생성됐어요",
