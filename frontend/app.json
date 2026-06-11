@@ -4,10 +4,10 @@
     "slug": "moa",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/color=Primary_1.png",
+    "icon": "./assets/logo_1.png",
     "userInterfaceStyle": "automatic",
     "splash": {
-      "image": "./assets/color=White.png",
+      "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#29B6E8"
     },
