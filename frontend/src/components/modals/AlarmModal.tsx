@@ -23,6 +23,7 @@ import {
   Pressable,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
@@ -56,14 +57,17 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
   const C = useTheme();
   const router = useRouter();
   const [alarms, setAlarms] = useState<AlarmItem[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
   // 역할 선택 모달
   const [roleTarget, setRoleTarget] = useState<{ memberId: string; projectName: string } | null>(null);
   const [selectedRoles, setSelectedRoles] = useState<string[]>([]);
 
   const loadAlarms = () => {
+    setIsLoading(true);
     NotificationAPI.list()
       .then((list) => setAlarms(list as AlarmItem[]))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setIsLoading(false));
   };
 
   useEffect(() => {
@@ -158,11 +162,13 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContent}
           >
-            {alarms.length === 0 && (
+            {isLoading ? (
+              <ActivityIndicator size="large" color={C.primary} style={{ paddingVertical: 32 }} />
+            ) : alarms.length === 0 ? (
               <Text style={{ color: C.textMuted, textAlign: "center", paddingVertical: 32, fontSize: 14 }}>
                 새로운 알림이 없어요.
               </Text>
-            )}
+            ) : null}
             {alarms.map((alarm) => {
               const info = TYPE_INFO[alarm.type];
               return (
