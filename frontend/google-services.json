@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1097230845583",
+    "project_id": "moa-mobilecomputing",
+    "storage_bucket": "moa-mobilecomputing.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1097230845583:android:26df194f691cbe4ec952fa",
+        "android_client_info": {
+          "package_name": "com.moa.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBmxeeR0q80nBoevAVH8Ks7QrwXR6flmiA"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

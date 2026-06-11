@@ -53,7 +53,6 @@ yarn-error.*
 .metro-health-check*
 
 # --- Firebase ---
-google-services.json
 GoogleService-Info.plist
 serviceAccountKey.json
 
