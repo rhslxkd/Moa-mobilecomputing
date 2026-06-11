@@ -1,0 +1,75 @@
+{
+  "expo": {
+    "name": "MOA",
+    "slug": "moa",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/color=Primary_1.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./assets/color=White.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#29B6E8"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.moa.app"
+    },
+    "android": {
+      "package": "com.moa.app",
+      "googleServicesFile": "./google-services.json",
+      "softwareKeyboardLayoutMode": "pan",
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.CAMERA",
+        "android.permission.RECEIVE_BOOT_COMPLETED",
+        "android.permission.VIBRATE"
+      ]
+    },
+    "scheme": "moa",
+    "plugins": [
+      "expo-router",
+      "expo-splash-screen",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "회의 녹음을 위해 마이크 접근 권한이 필요합니다."
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "QR 코드 스캔으로 친구를 추가하기 위해 카메라 접근 권한이 필요합니다."
+        }
+      ],
+      "expo-web-browser",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "채팅에 사진을 보내기 위해 사진 라이브러리 접근 권한이 필요합니다.",
+          "cameraPermission": "채팅에 사진을 촬영해 보내기 위해 카메라 접근 권한이 필요합니다."
+        }
+      ],
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/color=White.png",
+          "color": "#29B6E8",
+          "androidMode": "default"
+        }
+      ]
+    ],
+    "experiments": {
+      "typedRoutes": false,
+      "newArchEnabled": false
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "ee20218a-d574-4997-b254-52ce828162ec"
+      }
+    }
+  }
+}
