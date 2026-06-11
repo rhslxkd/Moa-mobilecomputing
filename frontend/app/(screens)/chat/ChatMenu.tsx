@@ -56,7 +56,7 @@ export default function ChatMenuScreen() {
           <TouchableOpacity style={styles.headerBtn} onPress={() => { setFavorite(v => !v); Alert.alert("즐겨찾기", favorite ? "즐겨찾기에서 제거했어요." : "즐겨찾기에 추가했어요."); }}>
             <Icon name="star" size={22} color={favorite ? "#F5B301" : "#333"} />
           </TouchableOpacity>
-          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push("/(screens)/settings")}>
+          <TouchableOpacity style={styles.headerBtn} onPress={() => router.push({ pathname: "/(screens)/chat/RoomSettings", params: { roomId, name: roomName } } as any)}>
             <Icon name="settings" size={22} color="#333" />
           </TouchableOpacity>
         </View>

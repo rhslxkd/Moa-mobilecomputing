@@ -24,6 +24,8 @@ export interface UserProfile {
 
 interface AuthContextType {
   user: UserProfile | null;
+  /** 앱 시작 시 저장된 토큰 복원이 끝났는지 (스플래시 라우팅 판단용) */
+  bootstrapped: boolean;
   /** 토큰 저장 후 /auth/me 를 호출해 유저 정보를 채움 */
   fetchUser: () => Promise<void>;
   /** 유저 정보 직접 세팅 (부분 업데이트 등) */
@@ -34,6 +36,7 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType>({
   user: null,
+  bootstrapped: false,
   fetchUser: async () => {},
   setUser: () => {},
   logout: () => {},
@@ -41,6 +44,7 @@ const AuthContext = createContext<AuthContextType>({
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [bootstrapped, setBootstrapped] = useState(false);
 
   const fetchUser = useCallback(async () => {
     try {
@@ -69,9 +73,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   // 앱 시작 시 저장된 토큰 복원 후 유저 정보 로드
   useEffect(() => {
-    TokenStore.load().then((token) => {
-      if (token) fetchUser();
-    });
+    (async () => {
+      try {
+        const token = await TokenStore.load();
+        if (token) await fetchUser();
+      } finally {
+        setBootstrapped(true);   // 복원 시도 완료 (성공/실패 무관)
+      }
+    })();
   }, [fetchUser]);
 
   const logout = useCallback(async () => {
@@ -80,7 +89,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   return (
-    <AuthContext.Provider value={{ user, fetchUser, setUser, logout }}>
+    <AuthContext.Provider value={{ user, bootstrapped, fetchUser, setUser, logout }}>
       {children}
     </AuthContext.Provider>
   );

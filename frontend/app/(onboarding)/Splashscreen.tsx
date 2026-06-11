@@ -11,6 +11,7 @@ import React, { useEffect } from "react";
 import { View, StyleSheet, StatusBar } from "react-native";
 import { useRouter } from "expo-router";
 import Svg, { Path } from "react-native-svg";
+import { useAuth } from "@/contexts/AuthContext";
 
 const BG = "#00A9EC";
 
@@ -39,13 +40,21 @@ function MoaIcon({ size = 120 }: { size?: number }) {
 // ── 메인 컴포넌트 ──────────────────────────
 export default function SplashScreen() {
   const router = useRouter();
+  const { user, bootstrapped } = useAuth();
 
   useEffect(() => {
+    // 토큰 복원이 끝날 때까지 대기 → 끝나면 로그인 상태에 맞게 분기
+    if (!bootstrapped) return;
     const timer = setTimeout(() => {
-      router.replace("/(onboarding)/signin");
-    }, 2000);
+      if (user) {
+        // 로그인 유지: 온보딩 완료면 홈, 아니면 온보딩 이어가기
+        router.replace(user.onboardingCompleted ? "/(tabs)" : "/(onboarding)/usersetup");
+      } else {
+        router.replace("/(onboarding)/signin");
+      }
+    }, 600);   // 스플래시 최소 노출
     return () => clearTimeout(timer);
-  }, []);
+  }, [bootstrapped, user]);
 
   return (
     <View style={styles.container}>

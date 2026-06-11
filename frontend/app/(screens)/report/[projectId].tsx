@@ -16,6 +16,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import Svg, { Path } from "react-native-svg";
+import * as Print from "expo-print";
+import * as Sharing from "expo-sharing";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
 import OptionSheet, { REPORT_OPTIONS } from "@/components/modals/OptionSheet";
@@ -117,6 +119,52 @@ export default function ReportScreen() {
   const unassignedTotal = Math.max(0, todoStats.total - assignedTotal);
   const unassignedDone = Math.max(0, todoStats.done - assignedDone);
 
+  const handleDownloadPdf = async () => {
+    const today = new Date().toLocaleDateString("ko-KR");
+    const memberRows = members.map((m, i) => `
+      <tr>
+        <td style="padding:8px;border-bottom:1px solid #eee">${i + 1}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;font-weight:600">${m.name}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${m.score}점</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${m.todosDone}/${m.todosTotal}</td>
+        <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;color:#555">${m.aiComment ?? "-"}</td>
+      </tr>`).join("");
+    const html = `
+      <html><head><meta charset="utf-8"><style>
+        body{font-family:-apple-system,sans-serif;padding:28px;color:#111}
+        h1{color:#00A9EC;margin-bottom:4px}
+        .sub{color:#888;font-size:13px;margin-bottom:24px}
+        table{width:100%;border-collapse:collapse;margin-top:8px}
+        th{background:#F1F5F9;padding:8px;text-align:left;font-size:13px}
+        .box{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:14px;margin-top:20px;font-size:14px;line-height:1.6}
+        .stat{display:inline-block;margin-right:20px;font-size:13px;color:#555}
+      </style></head><body>
+        <h1>📊 ${project.name} 기여도 리포트</h1>
+        <div class="sub">생성일 ${today} · MOA</div>
+        <div>
+          <span class="stat">전체 할 일 <b>${todoStats.total}</b></span>
+          <span class="stat">완료 <b>${todoStats.done}</b> (${todoStats.rate}%)</span>
+          <span class="stat">회의 <b>${meetingCount}</b>회</span>
+        </div>
+        <h3 style="margin-top:24px">팀원별 기여도</h3>
+        <table>
+          <tr><th>순위</th><th>이름</th><th>점수</th><th>완료</th><th>AI 코멘트</th></tr>
+          ${memberRows}
+        </table>
+        ${overallComment ? `<div class="box"><b>🤖 AI 종합 평가</b><br/>${overallComment}</div>` : ""}
+      </body></html>`;
+    try {
+      const { uri } = await Print.printToFileAsync({ html });
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: `${project.name} 기여도 리포트`, UTI: "com.adobe.pdf" });
+      } else {
+        Alert.alert("저장됨", "PDF가 생성됐어요.");
+      }
+    } catch (e: any) {
+      Alert.alert("PDF 생성 실패", e?.message ?? "PDF를 만들 수 없어요.");
+    }
+  };
+
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["top", "bottom"]}>
       {/* 흰색 헤더 */}
@@ -150,7 +198,7 @@ export default function ReportScreen() {
           <TouchableOpacity
             style={s.pdfBtn}
             activeOpacity={0.85}
-            onPress={() => Alert.alert("PDF 다운로드", "리포트를 PDF로 저장합니다.")}
+            onPress={handleDownloadPdf}
           >
             <DownloadIcon color="#00A9EC" />
           </TouchableOpacity>
@@ -262,8 +310,9 @@ export default function ReportScreen() {
         title="기여도 리포트"
         subtitle={project.name}
         options={REPORT_OPTIONS(
-          () => Alert.alert("공유", "리포트를 공유했습니다."),
-          () => { Alert.alert("삭제", "리포트가 삭제되었습니다."); router.back(); }
+          handleDownloadPdf,
+          () => { Alert.alert("삭제", "리포트가 삭제되었습니다."); router.back(); },
+          handleDownloadPdf,
         )}
       />
     </SafeAreaView>

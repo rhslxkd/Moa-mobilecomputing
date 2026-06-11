@@ -611,6 +611,13 @@ export const ChatAPI = {
       { method: "GET" },
     ),
 
+  // ── 채팅방 설정 ──
+  renameRoom: (roomId: string, name: string) =>
+    request<ChatRoomDTO>(`/chat/rooms/${roomId}/rename`, { method: "POST", body: JSON.stringify({ name }) }),
+
+  leaveRoom: (roomId: string) =>
+    request<void>(`/chat/rooms/${roomId}/leave`, { method: "POST" }),
+
   // ── 공지 ──
   listNotices: (roomId: string) =>
     request<NoticeDTO[]>(`/chat/rooms/${roomId}/notices`, { method: "GET" }),
@@ -751,6 +758,12 @@ export const DriveAPI = {
       method: "POST",
       body: JSON.stringify({ project_id: ctx.projectId, folder_id: ctx.folderId }),
     }),
+
+  renameFile: (id: string, name: string) =>
+    request<DriveFileDTO>(`/drive/files/${id}/rename`, { method: "POST", body: JSON.stringify({ name }) }),
+
+  renameFolder: (id: string, name: string) =>
+    request<DriveFolderDTO>(`/drive/folders/${id}/rename`, { method: "POST", body: JSON.stringify({ name }) }),
 };
 
 // ── Invitation API ─────────────────────────────────────────

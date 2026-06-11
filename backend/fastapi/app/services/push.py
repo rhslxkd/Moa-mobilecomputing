@@ -45,3 +45,18 @@ def send_push_multi(tokens: list[str], title: str, body: str) -> None:
     """여러 기기에 동시 전송."""
     for token in tokens:
         send_push(token, title, body)
+
+
+def send_to_user(user_id: str, title: str, body: str) -> None:
+    """유저 id로 등록된 푸시 토큰을 찾아 전송. 실패해도 무시."""
+    try:
+        from app.core.supabase import supabase_admin
+        rows = (
+            supabase_admin.table("push_tokens").select("token")
+            .eq("user_id", user_id).execute()
+        ).data
+        for r in rows:
+            if r.get("token"):
+                send_push(r["token"], title, body)
+    except Exception:
+        pass

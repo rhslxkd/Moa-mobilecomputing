@@ -17,6 +17,10 @@ class AutoOrganizeBody(BaseModel):
     folder_id: Optional[str] = None
 
 
+class RenameBody(BaseModel):
+    name: str
+
+
 # ── 폴더 ───────────────────────────────────────────────────
 
 @router.get("/folders", response_model=list[FolderResponse])
@@ -85,3 +89,13 @@ def move_file(file_id: str, body: MoveBody, token: str = Depends(bearer_token)):
 @router.post("/auto-organize")
 def auto_organize(body: AutoOrganizeBody, token: str = Depends(bearer_token)):
     return drive_svc.auto_organize(body.project_id, body.folder_id, token)
+
+
+@router.post("/files/{file_id}/rename", response_model=FileResponse)
+def rename_file(file_id: str, body: RenameBody, token: str = Depends(bearer_token)):
+    return drive_svc.rename_file(file_id, body.name, token)
+
+
+@router.post("/folders/{folder_id}/rename", response_model=FolderResponse)
+def rename_folder(folder_id: str, body: RenameBody, token: str = Depends(bearer_token)):
+    return drive_svc.rename_folder(folder_id, body.name, token)

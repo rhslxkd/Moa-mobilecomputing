@@ -270,7 +270,10 @@ def get_or_create_project_room(project_id: str, token: str) -> ChatRoomResponse:
 
 def _build_room(room: dict, user_id: str) -> ChatRoomResponse:
     members = _member_ids(room["id"])
-    if room["type"] == "project":
+    if room.get("name"):
+        # 사용자가 지정한 톡방 이름 우선
+        name = room["name"]
+    elif room["type"] == "project":
         proj = supabase_admin.table("projects").select("name").eq("id", room["project_id"]).limit(1).execute().data
         name = proj[0]["name"] if proj else "프로젝트"
     else:
@@ -520,3 +523,27 @@ def delete_poll(poll_id: str, token: str) -> None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="투표를 찾을 수 없습니다.")
     _assert_member(rows[0]["room_id"], user.id)
     supabase_admin.table("chat_polls").delete().eq("id", poll_id).execute()
+
+
+# ── 채팅방 설정 ─────────────────────────────────────────────
+
+def rename_room(room_id: str, name: str, token: str) -> ChatRoomResponse:
+    """톡방 이름 변경. 빈 값이면 기본(파생) 이름으로 되돌림."""
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    new_name = (name or "").strip() or None
+    supabase_admin.table("chat_rooms").update({"name": new_name}).eq("id", room_id).execute()
+    room = (
+        supabase_admin.table("chat_rooms").select("*").eq("id", room_id).limit(1).execute()
+    ).data[0]
+    return _build_room(room, user.id)
+
+
+def leave_room(room_id: str, token: str) -> None:
+    """채팅방 나가기 — 내 멤버십 제거. 마지막 멤버면 방 삭제."""
+    user = _get_user(token)
+    _assert_member(room_id, user.id)
+    supabase_admin.table("chat_room_members").delete().eq("room_id", room_id).eq("user_id", user.id).execute()
+    remaining = _member_ids(room_id)
+    if not remaining:
+        supabase_admin.table("chat_rooms").delete().eq("id", room_id).execute()

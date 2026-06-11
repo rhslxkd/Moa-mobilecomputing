@@ -20,6 +20,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import Icon from "@/components/common/Icon";
 import ChatBox from "@/components/chat/ChatBox";
 import { NoticeModal, PollModal } from "@/components/chat/ChatComposers";
+import { getWallpaper } from "@/lib/chatWallpaper";
 import { ChatAPI, MessageDTO, NoticeDTO, PollDTO } from "@/services/api";
 import { supabase } from "@/lib/supabase";
 import * as ImagePicker from "expo-image-picker";
@@ -146,6 +147,12 @@ export default function ChatDetailScreen() {
   const [inputText, setInputText] = useState("");
   const [showPlusMenu, setShowPlusMenu] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+
+  // 채팅창 배경(꾸미기)
+  const [wallpaper, setWallpaper] = useState<string | null>(null);
+  useEffect(() => {
+    if (roomId) getWallpaper(roomId).then(setWallpaper);
+  }, [roomId]);
 
   // 공지 / 투표
   const [notices, setNotices] = useState<NoticeDTO[]>([]);
@@ -403,7 +410,7 @@ export default function ChatDetailScreen() {
                 onAttachmentPress={() => openAttachment(item.attachmentUrl)}
               />
             )}
-            style={{ flex: 1, backgroundColor: C.bg }}
+            style={{ flex: 1, backgroundColor: wallpaper ?? C.bg }}
             contentContainerStyle={{ paddingVertical: 20 }}
             onLayout={() => listRef.current?.scrollToEnd({ animated: false })}
           />

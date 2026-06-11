@@ -289,6 +289,20 @@ export default function FolderDetailScreen() {
     load();
   };
 
+  const [renameVisible, setRenameVisible] = useState(false);
+  const [renameText, setRenameText] = useState("");
+  const handleRename = async () => {
+    if (!selectedFile || !renameText.trim()) return;
+    setRenameVisible(false);
+    try {
+      if (selectedFile.type === "folder") await DriveAPI.renameFolder(selectedFile.id, renameText.trim());
+      else await DriveAPI.renameFile(selectedFile.id, renameText.trim());
+      load();
+    } catch (e: any) {
+      Alert.alert("이름 변경 실패", e?.message ?? "변경할 수 없어요.");
+    }
+  };
+
   const [organizing, setOrganizing] = useState(false);
   const handleAutoOrganize = async () => {
     if (organizing) return;
@@ -496,12 +510,13 @@ export default function FolderDetailScreen() {
       <SubFolderSheet visible={subFolderVisible} onClose={() => setSubFolderVisible(false)} onConfirm={handleCreateSubfolder} />
       <DelSheet visible={deleteVisible} name={selectedFile?.name ?? ""} onClose={() => setDeleteVisible(false)} onConfirm={handleDeleteFile} />
 
-      {/* 항목 액션: 이동 / 삭제 */}
+      {/* 항목 액션: 이름 변경 / 이동 / 삭제 */}
       <OptionSheet
         isOpen={actionVisible}
         onClose={() => setActionVisible(false)}
         title={selectedFile?.name}
         options={[
+          { label: "이름 변경", emoji: "✏️", onPress: () => { setRenameText(selectedFile?.name ?? ""); setRenameVisible(true); } },
           { label: "이동", emoji: "📂", onPress: () => setMoveVisible(true) },
           { label: "삭제", emoji: "🗑️", onPress: () => setDeleteVisible(true), isDestructive: true },
         ]}
@@ -514,6 +529,28 @@ export default function FolderDetailScreen() {
         onClose={() => setMoveVisible(false)}
         onSelect={(targetId) => { setMoveVisible(false); handleMove(targetId); }}
       />
+
+      {/* 이름 변경 */}
+      <Modal visible={renameVisible} transparent animationType="fade" onRequestClose={() => setRenameVisible(false)}>
+        <View style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "center", paddingHorizontal: 28 }}>
+          <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={() => setRenameVisible(false)} />
+          <View style={{ backgroundColor: C.bgCard, borderRadius: 16, padding: 20, gap: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: "700", color: C.text }}>이름 변경</Text>
+            <TextInput
+              style={{ borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingHorizontal: 12, paddingVertical: 11, fontSize: 15, color: C.text }}
+              value={renameText} onChangeText={setRenameText} autoFocus selectTextOnFocus
+            />
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <TouchableOpacity style={{ flex: 1, borderWidth: 1, borderColor: C.border, borderRadius: 10, paddingVertical: 12, alignItems: "center" }} onPress={() => setRenameVisible(false)}>
+                <Text style={{ color: C.textSub, fontWeight: "600" }}>취소</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={{ flex: 1, backgroundColor: "#00A9EC", borderRadius: 10, paddingVertical: 12, alignItems: "center" }} onPress={handleRename} disabled={!renameText.trim()}>
+                <Text style={{ color: "#fff", fontWeight: "700" }}>저장</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, File
+from pydantic import BaseModel
 from app.schemas.chat import (
     ChatRoomResponse,
     MessageResponse,
@@ -65,6 +66,22 @@ async def send_file(
 @router.post("/rooms/{room_id}/read", status_code=204)
 def mark_as_read(room_id: str, token: str = Depends(bearer_token)):
     chat_svc.mark_as_read(room_id, token)
+
+
+# ── 채팅방 설정 ─────────────────────────────────────────────
+
+class RenameRoomBody(BaseModel):
+    name: str = ""
+
+
+@router.post("/rooms/{room_id}/rename", response_model=ChatRoomResponse)
+def rename_room(room_id: str, body: RenameRoomBody, token: str = Depends(bearer_token)):
+    return chat_svc.rename_room(room_id, body.name, token)
+
+
+@router.post("/rooms/{room_id}/leave", status_code=204)
+def leave_room(room_id: str, token: str = Depends(bearer_token)):
+    chat_svc.leave_room(room_id, token)
 
 
 # ── 공지 ───────────────────────────────────────────────────

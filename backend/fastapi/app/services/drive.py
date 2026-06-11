@@ -317,6 +317,42 @@ def move_folder(folder_id: str, target_folder_id: str | None, token: str) -> Fol
     return _build_folder(row)
 
 
+# ── 이름 변경 ───────────────────────────────────────────────
+
+def rename_file(file_id: str, name: str, token: str) -> FileResponse:
+    user = _get_user(token)
+    _get_accessible_file(file_id, user.id)
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="이름을 입력해주세요.")
+    row = (
+        supabase_admin.table("drive_files").update({"name": name})
+        .eq("id", file_id).execute()
+    ).data[0]
+    return _build_file(row)
+
+
+def rename_folder(folder_id: str, name: str, token: str) -> FolderResponse:
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("drive_folders").select("id, owner_id, project_id")
+        .eq("id", folder_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="폴더를 찾을 수 없습니다.")
+    f = rows[0]
+    if f["owner_id"] != user.id and not (f.get("project_id") and _has_project_access(f["project_id"], user.id)):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="권한이 없습니다.")
+    name = (name or "").strip()
+    if not name:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="이름을 입력해주세요.")
+    row = (
+        supabase_admin.table("drive_folders").update({"name": name})
+        .eq("id", folder_id).execute()
+    ).data[0]
+    return _build_folder(row)
+
+
 # ── AI 자동 정리 ───────────────────────────────────────────
 
 def auto_organize(project_id: str | None, folder_id: str | None, token: str) -> dict:

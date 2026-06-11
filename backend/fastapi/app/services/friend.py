@@ -167,6 +167,15 @@ def send_request(req: FriendRequestBody, token: str) -> FriendRequestResponse:
         .execute()
     ).data[0]
 
+    # 받는 사람에게 푸시 알림
+    try:
+        from app.services import push
+        me = _profiles_map([user.id]).get(user.id, {})
+        sender_name = _display_name(me) if me else "누군가"
+        push.send_to_user(target, "친구 요청", f"{sender_name}님이 친구 요청을 보냈어요.")
+    except Exception:
+        pass
+
     pmap = _profiles_map([target])
     p = pmap.get(target, {})
     return FriendRequestResponse(

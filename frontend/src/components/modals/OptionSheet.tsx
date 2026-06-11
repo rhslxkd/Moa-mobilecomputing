@@ -140,9 +140,9 @@ export const MEETING_OPTIONS = (
 ];
 
 /** Report/Option */
-export const REPORT_OPTIONS = (onShare: () => void, onDelete: () => void): OptionItem[] => [
+export const REPORT_OPTIONS = (onShare: () => void, onDelete: () => void, onPdf?: () => void): OptionItem[] => [
   { label: "리포트 공유",  emoji: "🔗", onPress: onShare },
-  { label: "PDF 내보내기", emoji: "📎", onPress: () => {} },
+  { label: "PDF 내보내기", emoji: "📎", onPress: onPdf ?? (() => {}) },
   { label: "리포트 삭제",  emoji: "🗑️", onPress: onDelete, isDestructive: true },
 ];
 
