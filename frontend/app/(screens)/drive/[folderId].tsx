@@ -7,7 +7,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, StyleSheet,
   Dimensions, Modal, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
 import Svg, { Path, Rect, G } from "react-native-svg";
 import { BlurView } from "expo-blur";
@@ -227,6 +227,7 @@ const mv = StyleSheet.create({
 export default function FolderDetailScreen() {
   const C = useTheme();
   const isDark = useIsDark();
+  const insets = useSafeAreaInsets();
   const router = useRouter();
   const { folderId, folderName, isPersonal } = useLocalSearchParams<{ folderId: string; folderName: string; isPersonal: string }>();
   // isPersonal "1" → folder_id 컨텍스트 / "0" → project_id 컨텍스트(프로젝트 폴더 루트)
@@ -460,7 +461,7 @@ export default function FolderDetailScreen() {
       </View>
 
       {/* ── 하단: AI 정리 + 업로드/새 폴더 ── */}
-      <View style={[s.addBtnWrap, { backgroundColor: C.bgCard, borderTopColor: C.border, gap: 8 }]}>
+      <View style={[s.addBtnWrap, { backgroundColor: C.bgCard, borderTopColor: C.border, gap: 8, paddingBottom: insets.bottom + 12 }]}>
         <TouchableOpacity
           style={[s.aiBtn, { borderColor: C.primary, backgroundColor: C.primary + "10" }]}
           onPress={handleAutoOrganize}
