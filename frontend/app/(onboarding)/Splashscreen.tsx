@@ -10,6 +10,7 @@
 import React, { useEffect } from "react";
 import { View, StyleSheet, StatusBar } from "react-native";
 import { useRouter } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
 import Svg, { Path } from "react-native-svg";
 
 const BG = "#00A9EC";
@@ -41,6 +42,9 @@ export default function SplashScreen() {
   const router = useRouter();
 
   useEffect(() => {
+    // 네이티브 스플래시 숨기기 (이 화면이 보이는 순간 제거)
+    SplashScreen.hideAsync();
+
     const timer = setTimeout(() => {
       router.replace("/(onboarding)/signin");
     }, 2000);
