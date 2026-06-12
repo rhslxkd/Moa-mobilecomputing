@@ -16,7 +16,7 @@
       "bundleIdentifier": "com.moa.app"
     },
     "android": {
-      "package": "com.moa.app",
+      "package": "com.moa.team_project.app",
       "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [
