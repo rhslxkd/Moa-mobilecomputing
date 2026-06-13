@@ -85,10 +85,12 @@ export default function ReportScreen() {
   const [meetingCount, setMeetingCount] = useState(0);
   const [overallComment, setOverallComment] = useState<string | null>(null);
   const [todoStats, setTodoStats] = useState({ total: 0, done: 0, rate: 0 });
+  const [dataLoading, setDataLoading] = useState(true);
 
   useFocusEffect(
     useCallback(() => {
       if (!projectId) return;
+      setDataLoading(true);
       ReportAPI.get(projectId).then((r) => {
         setMembers(r.members.map((m) => ({
           name: m.name,
@@ -102,7 +104,9 @@ export default function ReportScreen() {
         setMeetingCount(r.meeting_count);
         setOverallComment(r.overall_comment);
         setTodoStats({ total: r.total_todos, done: r.done_todos, rate: r.completion_rate });
-      }).catch(() => {});
+      }).catch((e: any) => {
+        Alert.alert("리포트 로드 실패", e?.message ?? "데이터를 불러올 수 없어요. 서버 연결을 확인해주세요.");
+      }).finally(() => setDataLoading(false));
     }, [projectId])
   );
 
@@ -120,6 +124,10 @@ export default function ReportScreen() {
   const unassignedDone = Math.max(0, todoStats.done - assignedDone);
 
   const handleDownloadPdf = async () => {
+    if (dataLoading) {
+      Alert.alert("잠깐요", "데이터를 불러오는 중이에요. 잠시 후 다시 시도해주세요.");
+      return;
+    }
     const today = new Date().toLocaleDateString("ko-KR");
     const memberRows = members.map((m, i) => `
       <tr>
@@ -196,9 +204,10 @@ export default function ReportScreen() {
             <Text style={s.headerTitle}>기여도 리포트</Text>
           </View>
           <TouchableOpacity
-            style={s.pdfBtn}
+            style={[s.pdfBtn, dataLoading && { opacity: 0.4 }]}
             activeOpacity={0.85}
             onPress={handleDownloadPdf}
+            disabled={dataLoading}
           >
             <DownloadIcon color="#00A9EC" />
           </TouchableOpacity>
