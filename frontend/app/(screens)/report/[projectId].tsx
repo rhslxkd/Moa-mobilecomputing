@@ -129,42 +129,118 @@ export default function ReportScreen() {
       return;
     }
     const today = new Date().toLocaleDateString("ko-KR");
-    const memberRows = members.map((m, i) => `
-      <tr>
-        <td style="padding:8px;border-bottom:1px solid #eee">${i + 1}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;font-weight:600">${m.name}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${m.score}점</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;text-align:center">${m.todosDone}/${m.todosTotal}</td>
-        <td style="padding:8px;border-bottom:1px solid #eee;font-size:12px;color:#555">${m.aiComment ?? "-"}</td>
-      </tr>`).join("");
+    const ACCENT = "#00A9EC";
+
+    // ── 팀원별 기여도 행 ──
+    const contribRows = members.map((m, i) => {
+      const barW = Math.max(2, m.score);
+      const isFirst = i === 0;
+      return `
+        <div style="display:flex;align-items:center;gap:12px;padding:12px 0;border-bottom:1px solid #F1F5F9">
+          <span style="width:20px;font-weight:700;color:${isFirst ? ACCENT : "#999"};font-size:15px">${i + 1}</span>
+          <div style="width:38px;height:38px;border-radius:50%;background:${isFirst ? ACCENT + "22" : "#F1F5F9"};display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;color:${isFirst ? ACCENT : "#555"}">${m.initial}</div>
+          <div style="flex:1">
+            <div style="font-weight:600;font-size:14px;color:#111">${m.name}</div>
+            <div style="font-size:11px;color:#999;margin-top:2px">${m.todosDone}/${m.todosTotal} 완료</div>
+          </div>
+          <div style="flex:2;margin:0 12px">
+            <div style="height:8px;border-radius:4px;background:#F1F5F9;overflow:hidden">
+              <div style="height:100%;width:${barW}%;background:${isFirst ? ACCENT : "#CBD5E1"};border-radius:4px"></div>
+            </div>
+          </div>
+          <span style="font-weight:700;font-size:15px;color:${isFirst ? ACCENT : "#555"};white-space:nowrap">${m.score}점</span>
+        </div>`;
+    }).join("");
+
+    // ── Todo 현황 멤버별 바 ──
+    const todoRows = members.map((m) => {
+      const pct = m.todosTotal > 0 ? Math.round((m.todosDone / m.todosTotal) * 100) : 0;
+      return `
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <span style="width:60px;font-size:13px;color:#555;white-space:nowrap">${m.name}</span>
+          <div style="flex:1;height:8px;border-radius:4px;background:#F1F5F9;overflow:hidden">
+            <div style="height:100%;width:${pct}%;background:${ACCENT};border-radius:4px"></div>
+          </div>
+          <span style="width:40px;text-align:right;font-size:12px;color:#999">${m.todosDone}/${m.todosTotal}</span>
+        </div>`;
+    }).join("");
+
+    // ── 팀원별 AI 코멘트 ──
+    const aiCommentRows = members.filter(m => m.aiComment).map((m) => `
+      <div style="display:flex;gap:12px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #F8FAFC">
+        <div style="width:36px;height:36px;border-radius:50%;background:${ACCENT}22;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;color:${ACCENT};flex-shrink:0">${m.initial}</div>
+        <div>
+          <div style="font-weight:700;font-size:13px;color:#111;margin-bottom:3px">${m.name}</div>
+          <div style="font-size:13px;color:#555;line-height:1.5">${m.aiComment}</div>
+        </div>
+      </div>`).join("");
+
     const html = `
       <html><head><meta charset="utf-8"><style>
-        body{font-family:-apple-system,sans-serif;padding:28px;color:#111}
-        h1{color:#00A9EC;margin-bottom:4px}
-        .sub{color:#888;font-size:13px;margin-bottom:24px}
-        table{width:100%;border-collapse:collapse;margin-top:8px}
-        th{background:#F1F5F9;padding:8px;text-align:left;font-size:13px}
-        .box{background:#F0F9FF;border:1px solid #BAE6FD;border-radius:10px;padding:14px;margin-top:20px;font-size:14px;line-height:1.6}
-        .stat{display:inline-block;margin-right:20px;font-size:13px;color:#555}
+        body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;padding:32px;color:#111;font-size:14px;line-height:1.5}
+        h2{font-size:16px;font-weight:700;color:#111;margin:24px 0 12px}
+        .section{background:#fff;border:1px solid #E8EFF6;border-radius:14px;padding:16px;margin-bottom:16px}
       </style></head><body>
-        <h1>📊 ${project.name} 기여도 리포트</h1>
-        <div class="sub">생성일 ${today} · MOA</div>
-        <div>
-          <span class="stat">전체 할 일 <b>${todoStats.total}</b></span>
-          <span class="stat">완료 <b>${todoStats.done}</b> (${todoStats.rate}%)</span>
-          <span class="stat">회의 <b>${meetingCount}</b>회</span>
+
+        <!-- 헤더 -->
+        <div style="margin-bottom:24px">
+          <div style="font-size:12px;color:#00A9EC;font-weight:600;margin-bottom:4px">${project?.name ?? ""}</div>
+          <div style="font-size:26px;font-weight:800;color:#111">기여도 리포트</div>
+          <div style="font-size:12px;color:#999;margin-top:4px">생성일 ${today} · MOA</div>
         </div>
-        <h3 style="margin-top:24px">팀원별 기여도</h3>
-        <table>
-          <tr><th>순위</th><th>이름</th><th>점수</th><th>완료</th><th>AI 코멘트</th></tr>
-          ${memberRows}
-        </table>
-        ${overallComment ? `<div class="box"><b>🤖 AI 종합 평가</b><br/>${overallComment}</div>` : ""}
+
+        <!-- 상단 통계 4개 -->
+        <div style="display:flex;gap:10px;margin-bottom:20px">
+          ${[
+            { label: "순위", value: "1위" },
+            { label: "내 점수", value: `${myScore}점` },
+            { label: "팀 평균", value: `${teamAvg}점` },
+            { label: "회의 횟수", value: `${meetingCount}회` },
+          ].map(stat => `
+            <div style="flex:1;background:${ACCENT}18;border-radius:12px;padding:14px 10px;text-align:center">
+              <div style="font-size:11px;color:${ACCENT};font-weight:600;margin-bottom:6px">${stat.label}</div>
+              <div style="font-size:20px;font-weight:800;color:${ACCENT}">${stat.value}</div>
+            </div>`).join("")}
+        </div>
+
+        <!-- 팀원별 기여도 -->
+        <div class="section">
+          <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:4px">팀원별 기여도</div>
+          ${contribRows || '<div style="color:#999;padding:12px 0">데이터 없음</div>'}
+        </div>
+
+        <!-- Todo 현황 -->
+        <div class="section">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+            <div style="font-size:15px;font-weight:700;color:#111">📋 Todo 현황</div>
+            <div style="font-size:12px;color:#999">전체 ${todoStats.total}개 중 ${todoStats.done}개 완료 · ${todoStats.rate}%</div>
+          </div>
+          <div style="height:10px;border-radius:5px;background:#F1F5F9;overflow:hidden;margin-bottom:16px">
+            <div style="height:100%;width:${todoStats.rate}%;background:${ACCENT};border-radius:5px"></div>
+          </div>
+          ${todoRows || '<div style="color:#999">데이터 없음</div>'}
+        </div>
+
+        <!-- AI 종합 평가 -->
+        ${overallComment ? `
+        <div class="section" style="background:#F0F9FF;border-color:#BAE6FD">
+          <div style="font-size:15px;font-weight:700;color:#0369A1;margin-bottom:8px">🤖 AI 종합 평가</div>
+          <div style="font-size:13px;color:#0C4A6E;line-height:1.7">${overallComment}</div>
+        </div>` : ""}
+
+        <!-- 팀원별 AI 코멘트 -->
+        ${aiCommentRows ? `
+        <div class="section">
+          <div style="font-size:15px;font-weight:700;color:#111;margin-bottom:4px">💬 팀원별 AI 코멘트</div>
+          ${aiCommentRows}
+        </div>` : ""}
+
       </body></html>`;
+
     try {
       const { uri } = await Print.printToFileAsync({ html });
       if (await Sharing.isAvailableAsync()) {
-        await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: `${project.name} 기여도 리포트`, UTI: "com.adobe.pdf" });
+        await Sharing.shareAsync(uri, { mimeType: "application/pdf", dialogTitle: `${project?.name ?? "팀"} 기여도 리포트`, UTI: "com.adobe.pdf" });
       } else {
         Alert.alert("저장됨", "PDF가 생성됐어요.");
       }
