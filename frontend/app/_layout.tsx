@@ -56,6 +56,7 @@ export default function RootLayout() {
           <Stack.Screen name="(screens)/chat/[projectId]" options={{ presentation: "card" }} />
           <Stack.Screen name="(screens)/chat/ChatMenu"    options={{ presentation: "card" }} />
           <Stack.Screen name="(screens)/chat/ChatArchive" options={{ presentation: "card" }} />
+          <Stack.Screen name="(screens)/chat/ChatBoard"   options={{ presentation: "card" }} />
           <Stack.Screen name="(screens)/chat/RoomSettings" options={{ presentation: "card" }} />
           {/* 프로젝트 */}
           <Stack.Screen name="(screens)/project/[projectId]" options={{ presentation: "card" }} />

@@ -52,6 +52,10 @@ export default function MeetingDetailScreen() {
   const [actionModalIdx, setActionModalIdx] = useState<number | null>(null);
   const [actionTitle, setActionTitle] = useState("");
   const [actionAssignee, setActionAssignee] = useState<string | null>(null);
+  // 회의록 전문 전체보기 모달
+  const [transcriptModalOpen, setTranscriptModalOpen] = useState(false);
+  // 화자별 "매칭 수정" 펼침 상태 (화자번호 set)
+  const [editingSpeakers, setEditingSpeakers] = useState<Record<string, boolean>>({});
 
   const openActionModal = (index: number) => {
     const it = meeting?.action_items[index];
@@ -109,6 +113,9 @@ export default function MeetingDetailScreen() {
 
   const speakers = meeting?.speaker_stats ? Object.keys(meeting.speaker_stats).sort() : [];
   const totalSpeak = speakers.reduce((sum, sp) => sum + (meeting!.speaker_stats[sp] || 0), 0);
+
+  // 매칭된 멤버 id → 이름
+  const memberNameById = (id?: string) => members.find((m) => m.id === id)?.name;
 
   const saveMapping = async () => {
     if (!meetingId) return;
@@ -266,23 +273,32 @@ export default function MeetingDetailScreen() {
           {/* 화자별 발언 + 멤버 매칭 */}
           {speakers.length > 0 && (
             <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
-              <Text style={[s.sectionTitle, { color: C.text }]}>🎤 화자별 발언 / 멤버 매칭</Text>
+              <Text style={[s.sectionTitle, { color: C.text }]}>🎤 화자별 발언</Text>
               <Text style={[s.speakerHint, { color: C.textMuted }]}>
-                AI가 발언 속 이름으로 자동 매칭했어요. 틀린 부분만 바꿔주세요. (여러 화자 → 한 명 가능)
+                AI가 발언 속 이름으로 화자를 자동 매칭했어요. 틀린 부분만 “매칭 수정”에서 바꿔주세요.
               </Text>
               {speakers.map((sp) => {
                 const sec = meeting.speaker_stats[sp] || 0;
                 const pct = totalSpeak > 0 ? Math.round((sec / totalSpeak) * 100) : 0;
+                const matchedName = memberNameById(mapping[sp]);
+                const editing = !!editingSpeakers[sp];
                 return (
                   <View key={sp} style={s.speakerBlock}>
                     <View style={s.speakerHeader}>
-                      <Text style={[s.speakerName, { color: C.text }]}>화자 {sp}</Text>
-                      <Text style={[s.speakerMeta, { color: C.textMuted }]}>
-                        {formatDuration(Math.round(sec))} · {pct}%
-                      </Text>
+                      {matchedName ? (
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.speakerName, { color: C.text }]}>{matchedName}</Text>
+                          <Text style={[s.speakerMeta, { color: C.textMuted }]}>화자 {sp} · {formatDuration(Math.round(sec))} · {pct}%</Text>
+                        </View>
+                      ) : (
+                        <View style={{ flex: 1 }}>
+                          <Text style={[s.speakerName, { color: C.textMuted }]}>화자 {sp} · 미매칭</Text>
+                          <Text style={[s.speakerMeta, { color: C.textMuted }]}>{formatDuration(Math.round(sec))} · {pct}%</Text>
+                        </View>
+                      )}
                     </View>
                     <View style={[s.barTrack, { backgroundColor: C.bgMuted }]}>
-                      <View style={[s.barFill, { width: `${pct}%`, backgroundColor: C.primary }]} />
+                      <View style={[s.barFill, { width: `${pct}%`, backgroundColor: matchedName ? C.primary : C.border }]} />
                     </View>
                     {/* 화자 대표 발언 (누구인지 식별용) */}
                     {meeting.speaker_samples?.[sp] ? (
@@ -290,30 +306,40 @@ export default function MeetingDetailScreen() {
                         “{meeting.speaker_samples[sp]}”
                       </Text>
                     ) : null}
-                    {/* 멤버 선택 칩 */}
+                    {/* 매칭 수정 토글 (백업) */}
                     {members.length > 0 && (
-                      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.memberChipRow}>
+                      <>
                         <TouchableOpacity
                           activeOpacity={0.7}
-                          onPress={() => setMapping((prev) => { const n = { ...prev }; delete n[sp]; return n; })}
-                          style={[s.memberChip, { borderColor: C.border }, !mapping[sp] && { backgroundColor: C.primary, borderColor: C.primary }]}
+                          onPress={() => setEditingSpeakers((prev) => ({ ...prev, [sp]: !prev[sp] }))}
                         >
-                          <Text style={[s.memberChipText, { color: !mapping[sp] ? "#fff" : C.textMuted }]}>없음</Text>
+                          <Text style={[s.editToggle, { color: C.primary }]}>{editing ? "▲ 닫기" : "✎ 매칭 수정"}</Text>
                         </TouchableOpacity>
-                        {members.map((m) => {
-                          const active = mapping[sp] === m.id;
-                          return (
+                        {editing && (
+                          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.memberChipRow}>
                             <TouchableOpacity
-                              key={m.id}
                               activeOpacity={0.7}
-                              onPress={() => setMapping((prev) => ({ ...prev, [sp]: m.id }))}
-                              style={[s.memberChip, { borderColor: C.border }, active && { backgroundColor: C.primary, borderColor: C.primary }]}
+                              onPress={() => setMapping((prev) => { const n = { ...prev }; delete n[sp]; return n; })}
+                              style={[s.memberChip, { borderColor: C.border }, !mapping[sp] && { backgroundColor: C.primary, borderColor: C.primary }]}
                             >
-                              <Text style={[s.memberChipText, { color: active ? "#fff" : C.text }]}>{m.name}</Text>
+                              <Text style={[s.memberChipText, { color: !mapping[sp] ? "#fff" : C.textMuted }]}>없음</Text>
                             </TouchableOpacity>
-                          );
-                        })}
-                      </ScrollView>
+                            {members.map((m) => {
+                              const active = mapping[sp] === m.id;
+                              return (
+                                <TouchableOpacity
+                                  key={m.id}
+                                  activeOpacity={0.7}
+                                  onPress={() => setMapping((prev) => ({ ...prev, [sp]: m.id }))}
+                                  style={[s.memberChip, { borderColor: C.border }, active && { backgroundColor: C.primary, borderColor: C.primary }]}
+                                >
+                                  <Text style={[s.memberChipText, { color: active ? "#fff" : C.text }]}>{m.name}</Text>
+                                </TouchableOpacity>
+                              );
+                            })}
+                          </ScrollView>
+                        )}
+                      </>
                     )}
                   </View>
                 );
@@ -337,7 +363,18 @@ export default function MeetingDetailScreen() {
           <View style={[s.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
             <Text style={[s.sectionTitle, { color: C.text }]}>회의록 전문</Text>
             {meeting.transcript ? (
-              <Text style={[s.transcriptText, { color: C.textSub }]}>{meeting.transcript}</Text>
+              <>
+                <Text style={[s.transcriptText, { color: C.textSub }]} numberOfLines={6}>
+                  {meeting.transcript}
+                </Text>
+                <TouchableOpacity
+                  activeOpacity={0.8}
+                  onPress={() => setTranscriptModalOpen(true)}
+                  style={[s.viewAllBtn, { borderColor: C.primary }]}
+                >
+                  <Text style={[s.viewAllText, { color: C.primary }]}>전체 보기</Text>
+                </TouchableOpacity>
+              </>
             ) : (
               <Text style={[s.emptyText, { color: C.textMuted }]}>녹취록이 없어요.</Text>
             )}
@@ -405,6 +442,22 @@ export default function MeetingDetailScreen() {
             </View>
           </View>
         </View>
+      </Modal>
+
+      {/* 회의록 전문 전체보기 모달 */}
+      <Modal visible={transcriptModalOpen} animationType="slide" onRequestClose={() => setTranscriptModalOpen(false)}>
+        <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]}>
+          <View style={[s.header, { borderBottomColor: C.border }]}>
+            <View style={{ width: 40 }} />
+            <Text style={[s.headerTitle, { color: C.text }]}>회의록 전문</Text>
+            <TouchableOpacity onPress={() => setTranscriptModalOpen(false)} style={{ width: 40, alignItems: "center" }}>
+              <Text style={{ fontSize: 22, color: C.text }}>✕</Text>
+            </TouchableOpacity>
+          </View>
+          <ScrollView contentContainerStyle={{ padding: 20 }}>
+            <Text style={[s.transcriptText, { color: C.textSub }]}>{meeting?.transcript ?? ""}</Text>
+          </ScrollView>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );
@@ -478,6 +531,9 @@ const s = StyleSheet.create({
   memberChipRow: { gap: 8, paddingVertical: 2, paddingRight: 4 },
   memberChip: { paddingHorizontal: 12, paddingVertical: 6, borderRadius: 16, borderWidth: 1 },
   memberChipText: { fontSize: 12, fontWeight: "600" },
+  editToggle: { fontSize: 12, fontWeight: "600", marginTop: 4 },
+  viewAllBtn: { marginTop: 10, paddingVertical: 10, borderRadius: 10, borderWidth: 1, alignItems: "center" },
+  viewAllText: { fontSize: 13, fontWeight: "700" },
   saveBtn: { marginTop: 12, paddingVertical: 12, borderRadius: 12, alignItems: "center", justifyContent: "center" },
   saveBtnText: { color: "#fff", fontSize: 14, fontWeight: "700" },
 });

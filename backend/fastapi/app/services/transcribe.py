@@ -54,11 +54,13 @@ def _parse_result(g: dict) -> dict:
             if txt:
                 speaker_words.setdefault(key, []).append(txt)
 
-    # 화자별 대표 발언(앞부분 일부)을 매칭 UI에서 보여주기 위해 저장
+    # 화자별 대표 발언(앞부분)을 저장 — 화자→멤버 자동매칭(이름 언급 탐지)에 사용.
+    # 자기소개("저는 ~입니다")가 앞쪽에 있을 확률이 높아 충분히 길게 담는다.
+    # UI는 numberOfLines로 잘려 표시되므로 화면에는 영향 없음.
     speaker_samples: dict[str, str] = {}
     for key, words in speaker_words.items():
         sample = " ".join(words).strip()
-        speaker_samples[key] = sample[:80] + ("…" if len(sample) > 80 else "")
+        speaker_samples[key] = sample[:400] + ("…" if len(sample) > 400 else "")
 
     return {
         "transcript": transcript,

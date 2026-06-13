@@ -14,7 +14,7 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams, useRouter, useFocusEffect } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import Icon from "@/components/common/Icon";
@@ -171,6 +171,19 @@ export default function ChatDetailScreen() {
   const handleDeletePoll = (id: string) => {
     ChatAPI.deletePoll(id).then(() => setPolls((prev) => prev.filter((p) => p.id !== id))).catch(() => {});
   };
+
+  // 공지/투표 다시 불러오기 (ChatBoard에서 만들고 돌아왔을 때 갱신)
+  const reloadBoards = useCallback(() => {
+    if (!roomId) return;
+    ChatAPI.listNotices(roomId).then(setNotices).catch(() => {});
+    ChatAPI.listPolls(roomId).then(setPolls).catch(() => {});
+  }, [roomId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      reloadBoards();
+    }, [reloadBoards])
+  );
 
   const [isSearchMode, setIsSearchMode] = useState(false);
   const [searchText, setSearchText] = useState("");
