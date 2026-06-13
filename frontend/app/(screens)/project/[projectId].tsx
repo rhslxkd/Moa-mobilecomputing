@@ -102,18 +102,13 @@ export default function ProjectDetailScreen() {
             <TouchableOpacity
               key={tab.key}
               style={styles.tabItem}
-              onPress={async () => {
+              onPress={() => {
                 if (tab.key === "files") {
                   // 프로젝트 폴더로 진입 (project_id 컨텍스트)
                   router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: project.id, folderName: project.name, isPersonal: "0" } } as any);
                 } else if (tab.key === "chat") {
                   setCurrentProject(project);
-                  try {
-                    const room = await ChatAPI.openProject(project.id);
-                    router.push({ pathname: "/(screens)/chat/[projectId]", params: { projectId: room.id, name: room.name } } as any);
-                  } catch (e: any) {
-                    Alert.alert("채팅방 열기 실패", e?.message ?? "채팅방을 열 수 없어요.");
-                  }
+                  router.push({ pathname: "/(screens)/chat/[projectId]", params: { projectId: project.id, name: project.name, isProjectId: "1" } } as any);
                 } else if (tab.key === "todo") {
                   router.push(`/(screens)/todo/${project.id}` as any);
                 } else if (tab.key === "schedule") {
@@ -265,7 +260,7 @@ function OverviewTab({
             <View
               style={[
                 styles.todayMarker,
-                { left: `${timeProgress}%` as any, borderColor: accentColor },
+                { left: `${timeProgress}%` as any, borderColor: accentColor, backgroundColor: C.bgCard },
               ]}
             />
           </View>

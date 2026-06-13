@@ -25,10 +25,8 @@ export default function RootLayout() {
   const scheme = useColorScheme();
   const isDark = scheme === "dark";
 
-  useEffect(() => {
-    // 폰트 로딩 등 초기화 작업 후 스플래시 숨기기
-    SplashScreen.hideAsync();
-  }, []);
+  // 네이티브 스플래시는 Splashscreen.tsx가 마운트된 뒤 숨김
+  // → Splashscreen.tsx의 useEffect에서 SplashScreen.hideAsync() 호출
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>

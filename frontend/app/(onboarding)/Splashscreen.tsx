@@ -10,6 +10,7 @@
 import React, { useEffect } from "react";
 import { View, StyleSheet, StatusBar } from "react-native";
 import { useRouter } from "expo-router";
+import * as ExpoSplashScreen from "expo-splash-screen";
 import Svg, { Path } from "react-native-svg";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -43,7 +44,8 @@ export default function SplashScreen() {
   const { user, bootstrapped } = useAuth();
 
   useEffect(() => {
-    // 토큰 복원이 끝날 때까지 대기 → 끝나면 로그인 상태에 맞게 분기
+    // 네이티브 스플래시 숨기기 + 토큰 복원 대기
+    ExpoSplashScreen.hideAsync();
     if (!bootstrapped) return;
     const timer = setTimeout(() => {
       if (user) {

@@ -11,8 +11,9 @@ import {
   TextInput,
   Alert,
   Modal,
+  ActivityIndicator,
 } from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import Svg, { Circle, Path, Polyline } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
@@ -127,7 +128,7 @@ function Calendar({ selectedDate, onSelectDate, todosByDate }: CalendarProps) {
         <TouchableOpacity onPress={prevMonth} activeOpacity={0.7} style={calS.navBtn}>
           <ChevronLeftIcon color={C.textSub} />
         </TouchableOpacity>
-        <Text style={[calS.monthLabel, { color: C.text }]}>{viewMonth + 1}월</Text>
+        <Text style={[calS.monthLabel, { color: C.text }]}>{viewYear}년 {viewMonth + 1}월</Text>
         <TouchableOpacity onPress={nextMonth} activeOpacity={0.7} style={calS.navBtn}>
           <ChevronRightIcon color={C.textSub} />
         </TouchableOpacity>
@@ -163,14 +164,18 @@ function Calendar({ selectedDate, onSelectDate, todosByDate }: CalendarProps) {
                 activeOpacity={0.7}
               >
                 <View style={[
-                  calS.dayCircle,
-                  isSelected && { backgroundColor: C.primary },
+                  calS.dayCircleWrap,
                   isToday && !isSelected && { borderWidth: 1.5, borderColor: C.primary },
                 ]}>
-                  <Text style={[calS.dayText, {
-                    color: isSelected ? "#fff" : isSun ? "#FF3B30" : isSat ? C.primary : C.text,
-                    fontWeight: isToday ? "700" : "400",
-                  }]}>{day}</Text>
+                  <View style={[
+                    calS.dayCircle,
+                    isSelected && { backgroundColor: C.primary },
+                  ]}>
+                    <Text style={[calS.dayText, {
+                      color: isSelected ? "#fff" : isToday ? C.primary : isSun ? "#FF3B30" : isSat ? C.primary : C.text,
+                      fontWeight: (isToday || isSelected) ? "700" : "400",
+                    }]}>{day}</Text>
+                  </View>
                 </View>
                 {dotColors.length > 0 && (
                   <View style={calS.dotRow}>
@@ -204,7 +209,8 @@ const calS = StyleSheet.create({
   weekRow: { flexDirection: "row" },
   dayLabel: { flex: 1, textAlign: "center", fontSize: 11, fontWeight: "600", paddingVertical: 6, letterSpacing: 0.3 },
   dayCell: { flex: 1, alignItems: "center", paddingVertical: 4, gap: 3 },
-  dayCircle: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  dayCircleWrap: { width: 32, height: 32, borderRadius: 16, alignItems: "center", justifyContent: "center" },
+  dayCircle: { width: 32, height: 32, borderRadius: 16, overflow: "hidden", alignItems: "center", justifyContent: "center" },
   dayText: { fontSize: 13 },
   dotRow: { flexDirection: "row", gap: 2, height: 5, alignItems: "center" },
   dot: { width: 4, height: 4, borderRadius: 2 },
@@ -306,7 +312,7 @@ const todoS = StyleSheet.create({
     alignItems: "center",
     gap: 10,
     paddingVertical: 12,
-    paddingHorizontal: 4,
+    paddingHorizontal: 0,
   },
   checkbox: {
     width: 22,
@@ -356,7 +362,7 @@ function ProjectSection({ projectName, projectColor, pendingTodos, doneTodos, on
   };
 
   return (
-    <View style={[secS.card, { backgroundColor: C.bgCard }]}>
+    <View style={[secS.card, { backgroundColor: C.bgCard, borderColor: C.border }]}>
       <TouchableOpacity activeOpacity={0.7} onPress={toggle} style={secS.header}>
         {/* 컬러 원 도트 */}
         <View style={[secS.dot, { backgroundColor: projectColor }]} />
@@ -416,15 +422,18 @@ function ProjectSection({ projectName, projectColor, pendingTodos, doneTodos, on
 
 const secS = StyleSheet.create({
   card: {
-    // 카드 없음 — 플랫 리스트
+    borderRadius: 16,
+    borderWidth: StyleSheet.hairlineWidth,
+    overflow: "hidden",
+    paddingHorizontal: 14,
   },
   header: {
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
     paddingVertical: 12,
-    paddingHorizontal: 4,
-    marginTop: 8,
+    paddingHorizontal: 0,
+    marginTop: 0,
   },
   dot: {
     width: 10,
@@ -451,8 +460,10 @@ const secS = StyleSheet.create({
 export default function TodosScreen() {
   const C = useTheme();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const { projects } = useProject();
   const [todos, setTodos] = useState<Todo[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
   const [editTitle, setEditTitle] = useState("");
@@ -462,6 +473,7 @@ export default function TodosScreen() {
 
   useFocusEffect(
     useCallback(() => {
+      setIsLoading(true);
       TodoAPI.list().then(dtos => {
         setTodos(dtos.map(d => ({
           id: d.id,
@@ -475,7 +487,7 @@ export default function TodosScreen() {
           assigneeName: d.assignee_name ?? undefined,
           assigneeRole: d.assignee_roles?.[0],
         })));
-      }).catch(() => {});
+      }).catch(() => {}).finally(() => setIsLoading(false));
     }, [])
   );
   const [searchVisible, setSearchVisible] = useState(false);
@@ -551,9 +563,15 @@ export default function TodosScreen() {
   }, [todos, projects]);
 
   const filteredTodos = useMemo(() => {
-    if (!searchQuery.trim()) return todos;
-    return todos.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
-  }, [todos, searchQuery]);
+    let result = todos;
+    // 검색 중이면 전체에서 검색
+    if (searchQuery.trim()) {
+      return result.filter(t => t.title.toLowerCase().includes(searchQuery.toLowerCase()));
+    }
+    // 검색 아닐 때는 선택한 날짜의 투두만 표시
+    result = result.filter(t => t.dueDate === selectedDateKey);
+    return result;
+  }, [todos, searchQuery, selectedDateKey]);
 
   const activeGroups = useMemo(() => projects.map(project => ({
     project,
@@ -564,7 +582,10 @@ export default function TodosScreen() {
   const personalPending = useMemo(() => filteredTodos.filter(t => t.projectId === "personal" && !t.done), [filteredTodos]);
   const personalDone    = useMemo(() => filteredTodos.filter(t => t.projectId === "personal" && t.done),  [filteredTodos]);
 
-  const dateLabel = `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일`;
+  const todayKey = toDateKey(new Date());
+  const isPast = selectedDateKey < todayKey;
+  const isToday = selectedDateKey === todayKey;
+  const dateLabel = `${selectedDate.getMonth() + 1}월 ${selectedDate.getDate()}일${isToday ? " (오늘)" : isPast ? " (지난 날)" : ""}`;
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={['top']}>
@@ -686,18 +707,23 @@ export default function TodosScreen() {
         </View>
       )}
 
-      <ScrollView contentContainerStyle={s.body} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[s.body, { paddingBottom: insets.bottom + 80 }]} showsVerticalScrollIndicator={false}>
         {!searchVisible && (
           <Calendar selectedDate={selectedDate} onSelectDate={setSelectedDate} todosByDate={todosByDate} />
         )}
 
         {!searchVisible && (
           <View style={s.dateLabelRow}>
-            <Text style={[s.dateLabel, { color: C.textMuted }]}>모드 · {dateLabel}</Text>
+            <Text style={[s.dateLabel, { color: C.textMuted }]}>{dateLabel}</Text>
           </View>
         )}
 
-        {activeGroups.length > 0 || personalPending.length > 0 || personalDone.length > 0 ? (
+        {isLoading ? (
+          <View style={{ alignItems: "center", paddingVertical: 48 }}>
+            <ActivityIndicator size="large" color={C.primary} />
+            <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 10 }}>불러오는 중...</Text>
+          </View>
+        ) : activeGroups.length > 0 || personalPending.length > 0 || personalDone.length > 0 ? (
           <>
             {(personalPending.length > 0 || personalDone.length > 0) && (
               <ProjectSection
@@ -751,7 +777,7 @@ const s = StyleSheet.create({
   headerActions: { flexDirection: "row", alignItems: "center", gap: 4 },
   iconBtn: { width: 38, height: 38, alignItems: "center", justifyContent: "center" },
   body: { padding: 16, gap: 12, paddingBottom: 48 },
-  dateLabelRow: { paddingHorizontal: 4, marginTop: 2, marginBottom: -2 },
+  dateLabelRow: { paddingHorizontal: 4, marginTop: 4, marginBottom: 4 },
   dateLabel: { fontSize: 12, fontWeight: "500" },
   emptyWrap: { alignItems: "center", paddingVertical: 48, gap: 6 },
   emptyEmoji: { fontSize: 40, marginBottom: 4 },

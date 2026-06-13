@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/contexts/AuthContext";
@@ -108,10 +109,14 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave, onD
 
   // 친구 초대 상태
   const [friends, setFriends] = useState<FriendDTO[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
   const [showFriendPicker, setShowFriendPicker] = useState(false);
 
   useEffect(() => {
-    if (isOpen) FriendsAPI.list().then(setFriends).catch(() => {});
+    if (isOpen) {
+      setFriendsLoading(true);
+      FriendsAPI.list().then(setFriends).catch(() => {}).finally(() => setFriendsLoading(false));
+    }
   }, [isOpen]);
 
   function addFriendAsMember(friend: FriendDTO) {
@@ -307,7 +312,11 @@ export default function ProjectEditSheet({ isOpen, project, onClose, onSave, onD
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={() => setShowFriendPicker(false)}>
           <TouchableOpacity activeOpacity={1} style={[{ position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: 420 }, { backgroundColor: C.bgCard }]}>
             <Text style={[{ fontSize: 16, fontWeight: "700", marginBottom: 12 }, { color: C.text }]}>친구를 팀원으로 초대</Text>
-            {friends.length === 0 ? (
+            {friendsLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                <ActivityIndicator size="small" color={C.primary} />
+              </View>
+            ) : friends.length === 0 ? (
               <Text style={{ color: C.textMuted, paddingVertical: 20, textAlign: "center" }}>
                 초대할 친구가 없어요. 친구를 먼저 추가해주세요.
               </Text>

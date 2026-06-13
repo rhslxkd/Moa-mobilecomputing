@@ -16,6 +16,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   Alert,
+  ActivityIndicator,
 } from "react-native";
 import { useTheme } from "@/hooks/useTheme";
 import type { Project, Member } from "@/contexts/ProjectContext";
@@ -101,6 +102,7 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
   const [showAddRow, setShowAddRow] = useState(false);
   const [showFriendPicker, setShowFriendPicker] = useState(false);
   const [friends, setFriends] = useState<FriendDTO[]>([]);
+  const [friendsLoading, setFriendsLoading] = useState(false);
 
   // 열릴 때마다 초기화
   useEffect(() => {
@@ -119,7 +121,8 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
       setNewMemberRoles([]);
       setNewMemberRoleInput("");
       // 친구 목록 로드
-      FriendsAPI.list().then(setFriends).catch(() => {});
+      setFriendsLoading(true);
+      FriendsAPI.list().then(setFriends).catch(() => {}).finally(() => setFriendsLoading(false));
     }
   }, [isOpen]);
 
@@ -419,7 +422,13 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
         <TouchableOpacity style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.4)" }} activeOpacity={1} onPress={() => setShowFriendPicker(false)}>
           <TouchableOpacity activeOpacity={1} style={[{ position: "absolute", bottom: 0, left: 0, right: 0, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: 20, maxHeight: 400 }, { backgroundColor: C.bgCard }]}>
             <Text style={[{ fontSize: 16, fontWeight: "700", marginBottom: 12 }, { color: C.text }]}>친구를 팀원으로 추가</Text>
-            {friends.map((f) => {
+            {friendsLoading ? (
+              <View style={{ alignItems: "center", paddingVertical: 24 }}>
+                <ActivityIndicator size="small" color={C.primary} />
+              </View>
+            ) : friends.length === 0 ? (
+              <Text style={{ color: C.textMuted, textAlign: "center", paddingVertical: 20 }}>친구가 없어요.</Text>
+            ) : friends.map((f) => {
               const already = members.some((m) => m.userId === f.user_id);
               return (
                 <TouchableOpacity
@@ -443,6 +452,7 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
         </TouchableOpacity>
       </Modal>
     </Modal>
+
   );
 }
 

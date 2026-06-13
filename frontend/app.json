@@ -9,14 +9,14 @@
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "#29B6E8"
+      "backgroundColor": "#00A9EC"
     },
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.moa.app"
     },
     "android": {
-      "package": "com.moa.app",
+      "package": "com.moa_team_project.app",
       "googleServicesFile": "./google-services.json",
       "softwareKeyboardLayoutMode": "pan",
       "permissions": [

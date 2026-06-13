@@ -9,6 +9,7 @@ import {
   Platform,
   StatusBar as RNStatusBar,
   TextInput,
+  ActivityIndicator,
 } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { StatusBar } from "expo-status-bar";
@@ -185,7 +186,18 @@ export default function DashboardScreen() {
           contentContainerStyle={[s.scrollContent, { paddingTop: 50 }]}
           showsVerticalScrollIndicator={false}
         >
-          {filteredAndSortedProjects.map((project) => (
+          {loading ? (
+            <View style={{ alignItems: "center", paddingVertical: 60 }}>
+              <ActivityIndicator size="large" color="#00A9EC" />
+              <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 10 }}>불러오는 중...</Text>
+            </View>
+          ) : filteredAndSortedProjects.length === 0 ? (
+            <View style={{ alignItems: "center", paddingVertical: 60 }}>
+              <Text style={{ fontSize: 32, marginBottom: 8 }}>📋</Text>
+              <Text style={{ color: C.text, fontSize: 16, fontWeight: "700" }}>프로젝트가 없어요</Text>
+              <Text style={{ color: C.textMuted, fontSize: 13, marginTop: 4 }}>새 프로젝트를 만들어보세요!</Text>
+            </View>
+          ) : filteredAndSortedProjects.map((project) => (
             <ProjectCard
               key={project.id}
               project={project}
@@ -208,12 +220,9 @@ export default function DashboardScreen() {
                 setCurrentProject(project);
                 router.push({ pathname: "/(screens)/drive/[folderId]", params: { folderId: project.id, folderName: project.name, isPersonal: "0" } } as any);
               }}
-              onChat={async () => {
+              onChat={() => {
                 setCurrentProject(project);
-                try {
-                  const room = await ChatAPI.openProject(project.id);
-                  router.push({ pathname: `/(screens)/chat/${room.id}`, params: { name: room.name } } as any);
-                } catch {}
+                router.push({ pathname: "/(screens)/chat/[projectId]", params: { projectId: project.id, name: project.name, isProjectId: "1" } } as any);
               }}
               onTodo={() => {
                 setCurrentProject(project);
@@ -698,7 +707,7 @@ function makeStyles(C: Theme, isDark: boolean, insets?: any) {
       width: 40,
       height: 40,
       borderRadius: 20,
-      backgroundColor: '#FFFFFF',
+      backgroundColor: C.bgCard,
       alignItems: "center",
       justifyContent: "center",
       shadowColor: "#000",
