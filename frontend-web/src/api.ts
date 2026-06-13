@@ -136,8 +136,15 @@ export const ProjectAPI = {
   create: (body: any) => request<ProjectDTO>("/projects", { method: "POST", body: JSON.stringify(body) }),
   update: (id: string, body: any) => request<ProjectDTO>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
   delete: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
-  invite: (id: string, body: { email: string; roles: string[] }) =>
-    request<MessageResponse>(`/projects/${id}/invite`, { method: "POST", body: JSON.stringify(body) }),
+};
+
+export const MemberAPI = {
+  list: (projectId: string) => request<MemberDTO[]>(`/projects/${projectId}/members`, { method: "GET" }),
+  add: (projectId: string, body: { user_id?: string; name: string; roles: string[] }) =>
+    request<MemberDTO>(`/projects/${projectId}/members`, { method: "POST", body: JSON.stringify(body) }),
+  update: (memberId: string, body: { name?: string; roles?: string[] }) =>
+    request<MemberDTO>(`/members/${memberId}`, { method: "PATCH", body: JSON.stringify(body) }),
+  delete: (memberId: string) => request<void>(`/members/${memberId}`, { method: "DELETE" }),
 };
 
 export const TodoAPI = {
@@ -154,12 +161,43 @@ export const NotificationAPI = {
   markRead: (id: string) => request<void>("/notifications/read", { method: "POST", body: JSON.stringify({ notification_id: id }) }),
 };
 
+export interface NoticeDTO { id: string; room_id: string; content: string; author_name: string; created_at: string; }
+export interface PollDTO {
+  id: string; room_id: string; question: string; options: string[];
+  counts: number[]; total_votes: number; my_vote: number | null;
+  author_name: string; closed: boolean; created_at: string;
+}
+
 export const ChatAPI = {
   rooms: () => request<ChatRoomDTO[]>("/chat/rooms", { method: "GET" }),
   openProject: (projectId: string) => request<ChatRoomDTO>(`/chat/rooms/project/${projectId}`, { method: "POST" }),
   createDirect: (friendUserId: string) => request<ChatRoomDTO>("/chat/rooms/direct", { method: "POST", body: JSON.stringify({ friend_user_id: friendUserId }) }),
   messages: (roomId: string) => request<MessageDTO[]>(`/chat/rooms/${roomId}/messages`, { method: "GET" }),
   send: (roomId: string, content: string) => request<MessageDTO>(`/chat/rooms/${roomId}/messages`, { method: "POST", body: JSON.stringify({ content }) }),
+  markRead: (roomId: string) => request<void>(`/chat/rooms/${roomId}/read`, { method: "POST" }),
+  readStatus: (roomId: string) => request<{ user_id: string; last_read_at: string | null }[]>(`/chat/rooms/${roomId}/read-status`, { method: "GET" }),
+  sendFile: async (roomId: string, file: File): Promise<MessageDTO> => {
+    const form = new FormData();
+    form.append("file", file);
+    const token = TokenStore.get();
+    const res = await fetch(`${BASE_URL}/chat/rooms/${roomId}/messages/file`, {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data?.detail as string) || "파일 업로드에 실패했습니다.");
+    return data as MessageDTO;
+  },
+  // 공지
+  listNotices: (roomId: string) => request<NoticeDTO[]>(`/chat/rooms/${roomId}/notices`, { method: "GET" }),
+  createNotice: (roomId: string, content: string) => request<NoticeDTO>(`/chat/rooms/${roomId}/notices`, { method: "POST", body: JSON.stringify({ content }) }),
+  deleteNotice: (noticeId: string) => request<void>(`/chat/notices/${noticeId}`, { method: "DELETE" }),
+  // 투표
+  listPolls: (roomId: string) => request<PollDTO[]>(`/chat/rooms/${roomId}/polls`, { method: "GET" }),
+  createPoll: (roomId: string, question: string, options: string[]) => request<PollDTO>(`/chat/rooms/${roomId}/polls`, { method: "POST", body: JSON.stringify({ question, options }) }),
+  votePoll: (pollId: string, optionIndex: number) => request<PollDTO>(`/chat/polls/${pollId}/vote`, { method: "POST", body: JSON.stringify({ option_index: optionIndex }) }),
+  deletePoll: (pollId: string) => request<void>(`/chat/polls/${pollId}`, { method: "DELETE" }),
 };
 
 export const MeetingAPI = {

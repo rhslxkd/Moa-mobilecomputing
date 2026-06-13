@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
-  ProjectAPI, TodoAPI, MeetingAPI, ReportAPI, MeetPollAPI, ChatAPI, DriveAPI,
+  ProjectAPI, TodoAPI, MeetingAPI, ReportAPI, MeetPollAPI, ChatAPI, DriveAPI, MemberAPI, FriendAPI,
   type ProjectDTO, type TodoDTO, type MeetingDTO, type ReportDTO,
   type MeetPollDetailDTO, type MeetPollDTO, type FileDTO, type FolderDTO,
 } from '../api'
@@ -30,6 +30,8 @@ export default function ProjectDetail() {
   const [view, setView] = useState<View>(initView)
   const [loading, setLoading] = useState(true)
 
+  const reloadProject = () => { if (id) ProjectAPI.get(id).then(setProject) }
+
   useEffect(() => {
     if (!id) return
     ProjectAPI.get(id).then(setProject).finally(() => setLoading(false))
@@ -38,6 +40,27 @@ export default function ProjectDetail() {
   const isLeader = project?.members.some(
     m => m.user_id === user?.id && m.roles.includes('팀장')
   ) ?? false
+
+  const handleInvite = async () => {
+    if (!id) return
+    const username = window.prompt('초대할 친구의 아이디(username)를 입력하세요')
+    if (!username?.trim()) return
+    try {
+      const found = await FriendAPI.search(username.trim())
+      const role = window.prompt(`역할을 입력하세요 (쉼표로 여러 개)`, '팀원')
+      const roles = (role || '팀원').split(',').map(r => r.trim()).filter(Boolean)
+      await MemberAPI.add(id, { user_id: found.user_id, name: found.name, roles: roles.length ? roles : ['팀원'] })
+      alert(`${found.name}님을 초대했어요. (수락 대기)`)
+      reloadProject()
+    } catch (e: any) {
+      alert(e.message || '초대에 실패했어요.')
+    }
+  }
+
+  const handleRemoveMember = async (memberId: string, name: string) => {
+    if (!window.confirm(`${name}님을 프로젝트에서 제외할까요?`)) return
+    try { await MemberAPI.delete(memberId); reloadProject() } catch (e: any) { alert(e.message) }
+  }
 
   const handleChat = async () => {
     if (!project) return
@@ -142,8 +165,11 @@ export default function ProjectDetail() {
 
             {/* 팀원 목록 */}
             <div style={s.card}>
-              <div style={{ padding: '14px 20px 10px', fontWeight: 700, fontSize: 14, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>
-                팀원 목록
+              <div style={{ padding: '14px 20px 10px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderBottom: '1px solid var(--border)' }}>
+                <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>팀원 목록</span>
+                {isLeader && (
+                  <button onClick={handleInvite} style={{ padding: '6px 12px', borderRadius: 8, background: 'var(--primary)', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer' }}>+ 멤버 초대</button>
+                )}
               </div>
               {project.members.map((m, i) => {
                 const isLeaderMember = m.roles.includes('팀장')
@@ -155,6 +181,9 @@ export default function ProjectDetail() {
                     <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{m.name}</span>
                     <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{m.roles.join(', ')}</span>
                     {isLeaderMember && <span style={{ fontSize: 16 }}>👑</span>}
+                    {isLeader && !isLeaderMember && (
+                      <button onClick={() => handleRemoveMember(m.id, m.name)} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 13 }}>제외</button>
+                    )}
                   </div>
                 )
               })}
