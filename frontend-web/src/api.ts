@@ -173,13 +173,12 @@ export const ReportAPI = {
 };
 
 export interface FriendDTO {
-  friendship_id: string; user_id: string; username: string;
-  first_name: string; last_name: string;
+  friendship_id: string; user_id: string; username: string; name: string;
 }
 export interface FriendRequestDTO {
-  id: string; from_user_id: string; from_username: string;
-  from_name: string; status: string; created_at: string;
+  friendship_id: string; user_id: string; username: string; name: string;
 }
+export interface UserSearchResponse { user_id: string; username: string; name: string; }
 
 export interface FolderDTO { id: string; name: string; project_id: string | null; parent_id: string | null; created_at: string; }
 export interface FileDTO { id: string; name: string; mime_type: string | null; size: number; project_id: string | null; folder_id: string | null; url: string | null; created_at: string; }
@@ -202,8 +201,8 @@ export const DriveAPI = {
 export const FriendAPI = {
   list: () => request<FriendDTO[]>("/friends", { method: "GET" }),
   requests: () => request<FriendRequestDTO[]>("/friends/requests", { method: "GET" }),
-  search: (username: string) => request<{ found: boolean; user_id?: string; username?: string; name?: string }>(`/friends/search?username=${encodeURIComponent(username)}`, { method: "GET" }),
-  sendRequest: (userId: string) => request<FriendRequestDTO>("/friends/request", { method: "POST", body: JSON.stringify({ to_user_id: userId }) }),
+  search: (username: string) => request<UserSearchResponse>(`/friends/search?username=${encodeURIComponent(username)}`, { method: "GET" }),
+  sendRequest: (userId: string) => request<FriendRequestDTO>("/friends/request", { method: "POST", body: JSON.stringify({ user_id: userId }) }),
   accept: (friendshipId: string) => request<void>(`/friends/${friendshipId}/accept`, { method: "POST" }),
   remove: (friendshipId: string) => request<void>(`/friends/${friendshipId}`, { method: "DELETE" }),
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { FriendAPI, type FriendDTO, type FriendRequestDTO } from '../api'
+import { FriendAPI, type FriendDTO, type FriendRequestDTO, type UserSearchResponse } from '../api'
 
 export default function Friends() {
   const navigate = useNavigate()
@@ -8,7 +8,7 @@ export default function Friends() {
   const [requests, setRequests] = useState<FriendRequestDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQ, setSearchQ] = useState('')
-  const [searchResult, setSearchResult] = useState<{ found: boolean; user_id?: string; username?: string; name?: string } | null>(null)
+  const [searchResult, setSearchResult] = useState<UserSearchResponse | null>(null)
   const [searching, setSearching] = useState(false)
   const [searchErr, setSearchErr] = useState('')
 
@@ -26,9 +26,8 @@ export default function Friends() {
     try {
       const res = await FriendAPI.search(searchQ.trim())
       setSearchResult(res)
-      if (!res.found) setSearchErr('사용자를 찾을 수 없습니다.')
     } catch (e: any) {
-      setSearchErr(e.message)
+      setSearchErr(e.message || '사용자를 찾을 수 없습니다.')
     } finally {
       setSearching(false)
     }
@@ -52,7 +51,7 @@ export default function Friends() {
     try { await FriendAPI.remove(id); load() } catch {}
   }
 
-  const pendingRequests = requests.filter(r => r.status === 'pending')
+  const pendingRequests = requests
 
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
@@ -80,7 +79,7 @@ export default function Friends() {
               </button>
             </form>
             {searchErr && <div style={{ padding: '0 18px 14px', color: 'var(--danger)', fontSize: 13 }}>{searchErr}</div>}
-            {searchResult?.found && searchResult.user_id && (
+            {searchResult && searchResult.user_id && (
               <div style={{ margin: '0 18px 14px', padding: '12px 16px', background: 'var(--bg-muted)', borderRadius: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <div>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>{searchResult.name}</div>
@@ -98,12 +97,12 @@ export default function Friends() {
             <div style={s.card}>
               <div style={{ padding: '16px 18px', fontWeight: 700, fontSize: 14, borderBottom: '1px solid var(--border)' }}>친구 요청 · {pendingRequests.length}</div>
               {pendingRequests.map(r => (
-                <div key={r.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
+                <div key={r.friendship_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{r.from_name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>@{r.from_username}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{r.name}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>@{r.username}</div>
                   </div>
-                  <button onClick={() => handleAccept(r.id)} style={{ padding: '8px 16px', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>
+                  <button onClick={() => handleAccept(r.friendship_id)} style={{ padding: '8px 16px', borderRadius: 8, background: 'var(--primary)', color: '#fff', fontWeight: 600, fontSize: 13, border: 'none', cursor: 'pointer' }}>
                     수락
                   </button>
                 </div>
@@ -124,10 +123,10 @@ export default function Friends() {
               <div key={f.friendship_id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '12px 18px', borderBottom: '1px solid var(--border)' }}>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
                   <div style={{ width: 38, height: 38, borderRadius: '50%', background: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 700, color: 'var(--primary)', fontSize: 16 }}>
-                    {(f.last_name + f.first_name)[0]}
+                    {f.name[0]}
                   </div>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 14 }}>{f.last_name}{f.first_name}</div>
+                    <div style={{ fontWeight: 600, fontSize: 14 }}>{f.name}</div>
                     <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>@{f.username}</div>
                   </div>
                 </div>
