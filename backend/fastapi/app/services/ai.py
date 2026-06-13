@@ -118,30 +118,34 @@ def categorize_files(files: list[dict]) -> dict:
     return out
 
 
-def match_speakers_to_members(speaker_samples: dict, member_names: list[str]) -> dict:
+def match_speakers_to_members(speaker_samples: dict, member_names: list[str], transcript: str = "") -> dict:
     """화자별 발언 샘플 + 멤버 이름 → {화자번호: 멤버이름 or None}.
 
-    각자 발언 시 이름을 말한다는 전제(자기소개). 발언 내용에서 누구인지 추론.
+    각자 발언 시 이름을 말하거나(자기소개) 서로를 부르는(호명) 맥락에서 누구인지 추론.
+    transcript 전체를 함께 주면 호명 단서까지 활용해 정확도를 높인다.
     """
     if not speaker_samples or not member_names:
         return {}
     sys = (
-        "회의 화자분리 결과를 실제 멤버와 매칭해줘. 각 화자는 발언 시작 부분에서 자기 이름을 "
-        "밝히는 경우가 많아. 다음 한국어 자기소개 패턴을 적극적으로 찾아라:\n"
-        "- '저는 OO입니다 / OO이에요 / OO예요'\n"
-        "- 'OO인데요 / OO입니다만 / 제가 OO인데'\n"
-        "- '안녕하세요 OO입니다', 'OO이라고 합니다'\n"
+        "회의 화자분리 결과를 실제 멤버와 매칭해줘. 화자는 두 가지 단서로 식별할 수 있어:\n"
+        "(A) 자기소개 — '저는 OO입니다/OO이에요/OO예요', 'OO인데요', '제가 OO인데', "
+        "'안녕하세요 OO입니다', 'OO이라고 합니다'\n"
+        "(B) 호명 — 다른 화자가 이름을 부름('OO아', 'OO님', 'OO!', 'OO이가', 'OO씨'). "
+        "누군가 'OO!'라고 부른 직후/직전에 대답하는 화자가 바로 OO일 가능성이 높아.\n"
         f"멤버 목록: {member_names}\n"
         "매칭 규칙:\n"
-        "1. 발언에서 언급된 이름과 멤버 목록을 비교해 가장 비슷한 멤버로 매칭해.\n"
-        "2. 별명·줄임말·받침 변형·오타도 고려해 매칭해 (예: '현수'→'장현수우', '은상'→'송은상', '혜민이'→'김혜민').\n"
-        "3. 이름이 일부만 일치해도(성 빼고 이름만, 이름 빼고 성만) 멤버 목록에 후보가 하나뿐이면 그 멤버로 매칭해.\n"
-        "4. 발언에 이름 단서가 전혀 없거나 어느 멤버인지 정말 모르겠으면 그 화자만 null.\n"
-        "확신이 서면 적극적으로 매칭하고, 추측이 가능하면 null보다 매칭을 우선해.\n"
+        "1. 자기소개(A)를 최우선으로 보고, 없으면 호명(B) 맥락과 대화 흐름으로 추론해.\n"
+        "2. 별명·줄임말·받침 변형·오타도 고려해 매칭해 (예: '현수'→'장현수우', '은상'→'송은상', '혜민이'→'김혜민', '범관'→'손범관').\n"
+        "3. 이름이 일부만 일치해도(성만/이름만) 멤버 목록에 후보가 하나뿐이면 그 멤버로 매칭해.\n"
+        "4. 이름 단서가 전혀 없거나 정말 모르겠는 화자만 null.\n"
+        "확신이 서면 적극 매칭하고, 추측 가능하면 null보다 매칭을 우선해.\n"
         "반드시 아래 JSON만 출력:\n"
         '{"mapping": {"화자번호": "멤버이름 또는 null"}}'
     )
-    user = json.dumps({"speakers": speaker_samples}, ensure_ascii=False)
+    payload: dict = {"speakers": speaker_samples}
+    if transcript:
+        payload["full_transcript"] = transcript[:4000]  # 호명 맥락 파악용 (앞 4000자)
+    user = json.dumps(payload, ensure_ascii=False)
     raw = chat([{"role": "system", "content": sys}, {"role": "user", "content": user}], temperature=0.1)
     data = _parse_json(raw) or {}
     mapping = data.get("mapping") or {}

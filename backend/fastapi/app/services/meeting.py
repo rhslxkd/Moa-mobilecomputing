@@ -310,12 +310,12 @@ def process_audio(meeting_id: str, audio_bytes: bytes, filename: str, token: str
         ).eq("id", meeting_id).execute()
 
     # 화자 자동 매칭 (각자 발언 시 이름을 말한다는 전제) → 참여자 자동 생성
-    _auto_map_speakers(meeting_id, speaker_stats, speaker_samples)
+    _auto_map_speakers(meeting_id, speaker_stats, speaker_samples, transcript)
 
     return get_meeting(meeting_id, token)
 
 
-def _auto_map_speakers(meeting_id: str, speaker_stats: dict, speaker_samples: dict) -> None:
+def _auto_map_speakers(meeting_id: str, speaker_stats: dict, speaker_samples: dict, transcript: str = "") -> None:
     """발언 내용에서 멤버 이름을 찾아 화자→멤버 자동 매칭, 참여자 자동 생성."""
     if not speaker_samples:
         return
@@ -333,7 +333,7 @@ def _auto_map_speakers(meeting_id: str, speaker_stats: dict, speaker_samples: di
         return
     name_to_id = {m["name"]: m["id"] for m in members if m.get("name")}
     try:
-        matched = ai.match_speakers_to_members(speaker_samples, list(name_to_id.keys()))
+        matched = ai.match_speakers_to_members(speaker_samples, list(name_to_id.keys()), transcript)
     except Exception:
         return
     if not matched:

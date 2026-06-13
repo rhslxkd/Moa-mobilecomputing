@@ -172,18 +172,18 @@ export default function ChatBoardScreen() {
       <NoticeModal
         visible={noticeOpen}
         onClose={() => setNoticeOpen(false)}
-        onSubmit={(content) => {
-          ChatAPI.createNotice(projectId, content).catch(() => {});
+        onSubmit={async (content) => {
           setNoticeOpen(false);
+          try { await ChatAPI.createNotice(projectId, content); } catch {}
           load();
         }}
       />
       <PollModal
         visible={pollOpen}
         onClose={() => setPollOpen(false)}
-        onSubmit={(question, options) => {
-          ChatAPI.createPoll(projectId, question, options).catch(() => {});
+        onSubmit={async (question, options) => {
           setPollOpen(false);
+          try { await ChatAPI.createPoll(projectId, question, options); } catch {}
           load();
         }}
       />
