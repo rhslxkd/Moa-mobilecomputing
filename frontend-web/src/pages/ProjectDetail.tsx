@@ -1,0 +1,589 @@
+import { useState, useEffect, useRef } from 'react'
+import { useParams, useNavigate, useLocation } from 'react-router-dom'
+import {
+  ProjectAPI, TodoAPI, MeetingAPI, ReportAPI, MeetPollAPI, ChatAPI, DriveAPI,
+  type ProjectDTO, type TodoDTO, type MeetingDTO, type ReportDTO,
+  type MeetPollDetailDTO, type MeetPollDTO, type FileDTO, type FolderDTO,
+} from '../api'
+import { useAuth } from '../AuthContext'
+
+const KR_DAYS = ['일', '월', '화', '수', '목', '금', '토']
+const MEMBER_COLORS = ['#1daaed', '#2db56a', '#f59e0b', '#9b59d4', '#dc2626', '#0d9488']
+
+function dotDateToKr(s: string) {
+  if (!s) return ''
+  const parts = s.split('.')
+  if (parts.length !== 3) return s
+  const d = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2]))
+  return `${Number(parts[1])}월 ${Number(parts[2])}일 (${KR_DAYS[d.getDay()]})`
+}
+
+type View = 'overview' | 'todo' | 'meetings' | 'report' | 'drive' | 'meetpoll'
+
+export default function ProjectDetail() {
+  const { id } = useParams<{ id: string }>()
+  const navigate = useNavigate()
+  const location = useLocation()
+  const { user } = useAuth()
+  const [project, setProject] = useState<ProjectDTO | null>(null)
+  const initView = (new URLSearchParams(location.search).get('view') as View) ?? 'overview'
+  const [view, setView] = useState<View>(initView)
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (!id) return
+    ProjectAPI.get(id).then(setProject).finally(() => setLoading(false))
+  }, [id])
+
+  const isLeader = project?.members.some(
+    m => m.user_id === user?.id && m.roles.includes('팀장')
+  ) ?? false
+
+  const handleChat = async () => {
+    if (!project) return
+    try {
+      const room = await ChatAPI.openProject(project.id)
+      navigate(`/chat?room=${room.id}`)
+    } catch { navigate('/chat') }
+  }
+
+  const handleMeeting = () => navigate(`/meetings?project=${id}`)
+
+  if (loading) return <div style={s.center}><span className="spinner" /></div>
+  if (!project) return <div style={s.center}>프로젝트를 찾을 수 없습니다</div>
+
+  const statusLabel: Record<string, string> = { active: '진행중', upcoming: '예정', completed: '완료' }
+  const statusColor: Record<string, string> = { active: 'var(--primary)', upcoming: 'var(--purple)', completed: 'var(--success)' }
+
+  const actionBtns = [
+    { label: '회의 시작',   icon: '🎙',  action: handleMeeting },
+    { label: '기여도 리포트', icon: '📊', action: () => setView('report') },
+    { label: '채팅',        icon: '💬',  action: handleChat },
+    { label: 'To-Do',      icon: '✅',  action: () => setView('todo') },
+    { label: '파일',        icon: '📁',  action: () => setView('drive') },
+    { label: '편집',        icon: '⚙️',  action: () => setView('meetpoll') },
+  ]
+
+  const viewTitle: Record<View, string> = {
+    overview: project.name,
+    todo: `To-Do · ${project.name}`,
+    meetings: `회의 · ${project.name}`,
+    report: `기여도 리포트 · ${project.name}`,
+    drive: `파일 · ${project.name}`,
+    meetpoll: `일정 조율 · ${project.name}`,
+  }
+
+  return (
+    <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      {/* Topbar */}
+      <div style={s.topbar}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          {view !== 'overview' && (
+            <button onClick={() => setView('overview')} style={s.backBtn}>←</button>
+          )}
+          {view === 'overview' && (
+            <button onClick={() => navigate('/dashboard')} style={s.backBtn}>←</button>
+          )}
+          <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{viewTitle[view]}</span>
+        </div>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button style={s.plusBtn}>🔔</button>
+          <button style={s.plusBtn}>+</button>
+        </div>
+      </div>
+
+      {/* Content */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: 24 }}>
+        {view === 'overview' && (
+          <div style={{ maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 16 }}>
+            {/* Blue header card */}
+            <div style={{
+              background: 'linear-gradient(135deg, #1daaed 0%, #1590c9 100%)',
+              borderRadius: 18, padding: '28px 28px 24px',
+              boxShadow: '0 4px 20px rgba(29,170,237,0.25)',
+            }}>
+              <div style={{ fontSize: 24, fontWeight: 800, color: '#fff', marginBottom: 6 }}>
+                {project.emoji} {project.name}
+              </div>
+              <div style={{ fontSize: 14, color: 'rgba(255,255,255,0.85)' }}>
+                팀원 {project.member_count}명 · D-{project.days_left}
+              </div>
+            </div>
+
+            {/* Action buttons grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12 }}>
+              {actionBtns.map(btn => (
+                <button key={btn.label} onClick={btn.action} style={s.actionBtn}>
+                  <span style={{ fontSize: 28, marginBottom: 8, display: 'block' }}>{btn.icon}</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>{btn.label}</span>
+                </button>
+              ))}
+            </div>
+
+            {/* Info table */}
+            <div style={s.card}>
+              {[
+                { label: '시작일', value: dotDateToKr(project.start_date) },
+                { label: '종료일', value: dotDateToKr(project.end_date) },
+                { label: '상태',   value: project.status, isStatus: true },
+              ].map((row, i) => (
+                <div key={row.label} style={{ display: 'flex', alignItems: 'center', padding: '14px 20px', borderBottom: i < 2 ? '1px solid var(--border)' : 'none' }}>
+                  <span style={{ width: 80, fontSize: 14, color: 'var(--text-muted)' }}>{row.label}</span>
+                  {row.isStatus ? (
+                    <span style={{ fontSize: 14, fontWeight: 700, color: statusColor[project.status] }}>
+                      {statusLabel[project.status]}
+                    </span>
+                  ) : (
+                    <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--text)' }}>{row.value}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+
+            {/* 팀원 목록 */}
+            <div style={s.card}>
+              <div style={{ padding: '14px 20px 10px', fontWeight: 700, fontSize: 14, color: 'var(--text)', borderBottom: '1px solid var(--border)' }}>
+                팀원 목록
+              </div>
+              {project.members.map((m, i) => {
+                const isLeaderMember = m.roles.includes('팀장')
+                return (
+                  <div key={m.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderBottom: i < project.members.length - 1 ? '1px solid var(--border)' : 'none', gap: 14 }}>
+                    <div style={{ width: 40, height: 40, borderRadius: '50%', background: MEMBER_COLORS[i % MEMBER_COLORS.length], display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
+                      {m.name.slice(0, 1)}
+                    </div>
+                    <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: 'var(--text)' }}>{m.name}</span>
+                    <span style={{ fontSize: 13, color: 'var(--text-muted)' }}>{m.roles.join(', ')}</span>
+                    {isLeaderMember && <span style={{ fontSize: 16 }}>👑</span>}
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        {view === 'todo'     && <TodoTab projectId={project.id} members={project.members} />}
+        {view === 'meetings' && <MeetingsTab projectId={project.id} isLeader={isLeader} />}
+        {view === 'report'   && <ReportTab projectId={project.id} />}
+        {view === 'drive'    && <DriveTab projectId={project.id} isLeader={isLeader} />}
+        {view === 'meetpoll' && <MeetPollTab projectId={project.id} />}
+      </div>
+    </div>
+  )
+}
+
+// ── Todo Tab ──────────────────────────────────────────
+function TodoTab({ projectId, members }: { projectId: string; members: { id: string; name: string }[] }) {
+  const [todos, setTodos] = useState<TodoDTO[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newTitle, setNewTitle] = useState('')
+  const [adding, setAdding] = useState(false)
+  const [filter, setFilter] = useState<'all' | 'done' | 'undone'>('all')
+
+  const load = () => TodoAPI.listByProject(projectId).then(setTodos).finally(() => setLoading(false))
+  useEffect(() => { load() }, [projectId])
+
+  const addTodo = async () => {
+    if (!newTitle.trim()) return
+    setAdding(true)
+    try { await TodoAPI.create({ title: newTitle, project_id: projectId }); setNewTitle(''); load() }
+    finally { setAdding(false) }
+  }
+
+  const toggle = async (id: string) => {
+    const updated = await TodoAPI.toggleDone(id)
+    setTodos(prev => prev.map(t => t.id === id ? updated : t))
+  }
+
+  const del = async (id: string) => {
+    await TodoAPI.delete(id)
+    setTodos(prev => prev.filter(t => t.id !== id))
+  }
+
+  const filtered = todos.filter(t => filter === 'all' ? true : filter === 'done' ? t.done : !t.done)
+  const done = todos.filter(t => t.done).length
+
+  if (loading) return <div style={s.center}><span className="spinner" /></div>
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ marginBottom: 20 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-sub)', marginBottom: 6 }}>
+          <span>진행률</span><span>{done}/{todos.length}</span>
+        </div>
+        <div style={{ height: 8, background: 'var(--bg-muted)', borderRadius: 4, overflow: 'hidden' }}>
+          <div style={{ height: '100%', background: 'var(--primary)', borderRadius: 4, width: todos.length ? `${(done / todos.length) * 100}%` : '0%', transition: 'width 0.3s' }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+        <input style={{ ...s.input, flex: 1 }} value={newTitle} onChange={e => setNewTitle(e.target.value)}
+          placeholder="새 할 일 추가..." onKeyDown={e => e.key === 'Enter' && addTodo()} />
+        <button style={{ ...s.addBtn, opacity: adding ? 0.7 : 1 }} onClick={addTodo} disabled={adding}>추가</button>
+      </div>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
+        {(['all', 'undone', 'done'] as const).map(f => (
+          <button key={f} style={{ ...s.chip, background: filter === f ? 'var(--primary-bg)' : 'var(--bg-muted)', color: filter === f ? 'var(--primary)' : 'var(--text-sub)', fontWeight: filter === f ? 700 : 500 }}
+            onClick={() => setFilter(f)}>
+            {f === 'all' ? '전체' : f === 'undone' ? '미완료' : '완료'}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        {filtered.map(todo => (
+          <div key={todo.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)' }}>
+            <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} style={{ width: 18, height: 18, accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }} />
+            <div style={{ flex: 1, minWidth: 0 }}>
+              <div style={{ fontSize: 14, color: todo.done ? 'var(--text-muted)' : 'var(--text)', textDecoration: todo.done ? 'line-through' : 'none' }} className="truncate">{todo.title}</div>
+              {todo.assignee_name && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>담당: {todo.assignee_name}</div>}
+            </div>
+            {todo.due_date && <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>~{todo.due_date.slice(0, 10)}</div>}
+            <DiffBadge diff={todo.difficulty} />
+            <button onClick={() => del(todo.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, padding: '0 2px', flexShrink: 0 }}>×</button>
+          </div>
+        ))}
+        {filtered.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>할 일이 없습니다</div>}
+      </div>
+    </div>
+  )
+}
+
+function DiffBadge({ diff }: { diff: number }) {
+  const map = { 1: { label: '하', color: '#16A34A', bg: '#F0FDF4' }, 2: { label: '중', color: '#D97706', bg: '#FFFBEB' }, 3: { label: '상', color: '#DC2626', bg: '#FEF2F2' } } as const
+  const d = map[diff as 1 | 2 | 3]
+  if (!d) return null
+  return <span style={{ padding: '2px 8px', borderRadius: 10, background: d.bg, color: d.color, fontSize: 11, fontWeight: 600, flexShrink: 0 }}>{d.label}</span>
+}
+
+// ── Meetings Tab ──────────────────────────────────────
+function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boolean }) {
+  const [meetings, setMeetings] = useState<MeetingDTO[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<MeetingDTO | null>(null)
+
+  const load = () => MeetingAPI.list(projectId).then(setMeetings).finally(() => setLoading(false))
+  useEffect(() => { load() }, [projectId])
+
+  const handleDelete = async (e: React.MouseEvent, meetingId: string) => {
+    e.stopPropagation()
+    if (!confirm('이 회의 기록을 삭제할까요?')) return
+    try { await MeetingAPI.delete(meetingId); setMeetings(prev => prev.filter(m => m.id !== meetingId)); if (selected?.id === meetingId) setSelected(null) }
+    catch (err: any) { alert(err.message) }
+  }
+
+  if (loading) return <div style={s.center}><span className="spinner" /></div>
+
+  if (selected) return (
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <button style={s.backLink} onClick={() => setSelected(null)}>← 목록으로</button>
+        {isLeader && (
+          <button onClick={e => handleDelete(e, selected.id)}
+            style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 12, border: '1px solid var(--danger)', cursor: 'pointer' }}>
+            삭제
+          </button>
+        )}
+      </div>
+      <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{selected.title}</h2>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
+        {selected.started_at ? new Date(selected.started_at).toLocaleString('ko-KR') : ''} · {Math.round(selected.duration_seconds / 60)}분
+      </div>
+      {selected.summary.length > 0 && <Section title="요약"><ul style={{ paddingLeft: 16 }}>{selected.summary.map((s, i) => <li key={i} style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 4 }}>{s}</li>)}</ul></Section>}
+      {selected.keywords.length > 0 && <Section title="키워드"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{selected.keywords.map(k => <span key={k} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 12 }}>{k}</span>)}</div></Section>}
+      {selected.participants.length > 0 && <Section title="참여자">{selected.participants.map(p => <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}><span style={{ fontSize: 13 }}>{p.name}</span><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{Math.round(p.speak_time_seconds / 60)}분 발언</span></div>)}</Section>}
+      {selected.action_items.length > 0 && <Section title="액션 아이템">{selected.action_items.map((a, i) => <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0' }}><span style={{ color: a.added ? 'var(--success)' : 'var(--text-muted)' }}>•</span><span style={{ fontSize: 13, color: 'var(--text-sub)' }}>{a.title}</span></div>)}</Section>}
+    </div>
+  )
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      {meetings.length === 0 ? <div style={s.empty}>회의 기록이 없습니다</div>
+        : meetings.map(m => (
+          <div key={m.id} style={{ ...s.meetCard, position: 'relative' }} onClick={() => setSelected(m)}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, paddingRight: isLeader ? 60 : 0 }}>{m.title}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
+              {m.started_at ? new Date(m.started_at).toLocaleDateString('ko-KR') : m.created_at.slice(0, 10)} · {Math.round(m.duration_seconds / 60)}분 · 참여자 {m.participants.length}명
+            </div>
+            {m.keywords.length > 0 && <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>{m.keywords.slice(0, 3).map(k => <span key={k} style={{ padding: '2px 8px', borderRadius: 12, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 11 }}>{k}</span>)}</div>}
+            {isLeader && <button onClick={e => handleDelete(e, m.id)} style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 6, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 11, border: '1px solid var(--danger)', cursor: 'pointer' }}>삭제</button>}
+          </div>
+        ))}
+    </div>
+  )
+}
+
+// ── Report Tab ────────────────────────────────────────
+function ReportTab({ projectId }: { projectId: string }) {
+  const [report, setReport] = useState<ReportDTO | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
+
+  useEffect(() => { ReportAPI.get(projectId).then(setReport).catch(e => setError(e.message)).finally(() => setLoading(false)) }, [projectId])
+
+  if (loading) return <div style={s.center}><span className="spinner" /></div>
+  if (error) return <div style={s.empty}>{error}</div>
+  if (!report) return null
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
+        <StatCard label="할 일 완료율" value={`${Math.round(report.completion_rate * 100)}%`} color="var(--primary)" />
+        <StatCard label="전체 할 일" value={`${report.done_todos}/${report.total_todos}`} color="var(--success)" />
+        <StatCard label="회의 횟수" value={`${report.meeting_count}회`} color="var(--purple)" />
+      </div>
+      {report.overall_comment && (
+        <div style={{ padding: 16, background: 'var(--primary-bg)', borderRadius: 12, marginBottom: 24, fontSize: 13, color: 'var(--text-sub)', lineHeight: 1.6 }}>
+          💬 {report.overall_comment}
+        </div>
+      )}
+      <h3 style={{ fontSize: 15, fontWeight: 700, marginBottom: 14 }}>팀원별 기여도</h3>
+      {report.members.map(m => (
+        <div key={m.member_id} style={{ background: 'var(--bg-card)', borderRadius: 14, padding: '16px 20px', border: '1px solid var(--border)', marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <div style={{ width: 36, height: 36, borderRadius: '50%', background: 'var(--primary-bg)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 700 }}>{m.name.slice(0, 1)}</div>
+              <span style={{ fontWeight: 600, fontSize: 14 }}>{m.name}</span>
+            </div>
+            <span style={{ fontWeight: 700, fontSize: 18, color: 'var(--primary)' }}>{m.contribution}%</span>
+          </div>
+          <div style={{ height: 6, background: 'var(--bg-muted)', borderRadius: 3, overflow: 'hidden', marginBottom: 8 }}>
+            <div style={{ height: '100%', background: 'var(--primary)', borderRadius: 3, width: `${m.contribution}%` }} />
+          </div>
+          <div style={{ display: 'flex', gap: 16, fontSize: 12, color: 'var(--text-muted)' }}>
+            <span>할 일 {m.todos_done}/{m.todos_total}</span>
+            <span>발언 {Math.round(m.speak_seconds / 60)}분</span>
+            <span>점수 {m.score}점</span>
+          </div>
+          {m.ai_comment && <div style={{ marginTop: 8, fontSize: 12, color: 'var(--text-sub)', fontStyle: 'italic' }}>"{m.ai_comment}"</div>}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+function StatCard({ label, value, color }: { label: string; value: string; color: string }) {
+  return (
+    <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: '16px 20px', textAlign: 'center' }}>
+      <div style={{ fontSize: 22, fontWeight: 800, color }}>{value}</div>
+      <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>{label}</div>
+    </div>
+  )
+}
+
+// ── Drive Tab ─────────────────────────────────────────
+function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolean }) {
+  const [files, setFiles] = useState<FileDTO[]>([])
+  const [folders, setFolders] = useState<FolderDTO[]>([])
+  const [loading, setLoading] = useState(true)
+  const [newFolder, setNewFolder] = useState('')
+  const fileRef = useRef<HTMLInputElement>(null)
+
+  const load = () => {
+    Promise.all([
+      DriveAPI.folders(projectId),
+      DriveAPI.files(projectId),
+    ]).then(([folds, fils]) => { setFolders(folds); setFiles(fils) }).finally(() => setLoading(false))
+  }
+  useEffect(() => { load() }, [projectId])
+
+  const createFolder = async () => {
+    if (!newFolder.trim()) return
+    await DriveAPI.createFolder(newFolder.trim(), projectId)
+    setNewFolder(''); load()
+  }
+
+  const deleteFolder = async (id: string) => {
+    if (!confirm('폴더를 삭제할까요?')) return
+    await DriveAPI.deleteFolder(id); load()
+  }
+
+  const deleteFile = async (id: string) => {
+    if (!confirm('파일을 삭제할까요?')) return
+    await DriveAPI.deleteFile(id); load()
+  }
+
+  const downloadFile = async (id: string, name: string) => {
+    try {
+      const { url } = await DriveAPI.downloadUrl(id)
+      const a = document.createElement('a'); a.href = url; a.download = name; a.click()
+    } catch {}
+  }
+
+  const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    const form = new FormData()
+    form.append('file', file)
+    if (projectId) form.append('project_id', projectId)
+    try {
+      const token = localStorage.getItem('moa_access_token')
+      await fetch('/api/drive/files', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form })
+      load()
+    } catch {}
+    e.target.value = ''
+  }
+
+  const formatSize = (b: number) => b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : b > 1024 ? `${(b / 1024).toFixed(0)}KB` : `${b}B`
+
+  if (loading) return <div style={s.center}><span className="spinner" /></div>
+
+  return (
+    <div style={{ maxWidth: 640 }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8, flex: 1 }}>
+          <input style={{ ...s.input, flex: 1 }} placeholder="새 폴더 이름" value={newFolder} onChange={e => setNewFolder(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolder()} />
+          <button style={s.addBtn} onClick={createFolder}>폴더 만들기</button>
+        </div>
+        <button style={s.addBtn} onClick={() => fileRef.current?.click()}>📎 파일 업로드</button>
+        <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={uploadFile} />
+      </div>
+
+      {folders.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>폴더</div>
+          {folders.map(f => (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 6 }}>
+              <span style={{ fontSize: 18, marginRight: 10 }}>📁</span>
+              <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{f.name}</span>
+              <button onClick={() => deleteFolder(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {files.length > 0 ? (
+        <div>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>파일</div>
+          {files.map(f => (
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 6 }}>
+              <span style={{ fontSize: 18, marginRight: 10 }}>📄</span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 14, fontWeight: 500 }} className="truncate">{f.name}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatSize(f.size)}</div>
+              </div>
+              <button onClick={() => downloadFile(f.id, f.name)} style={{ ...s.addBtn, padding: '4px 10px', fontSize: 12, marginRight: 6 }}>다운로드</button>
+              <button onClick={() => deleteFile(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
+            </div>
+          ))}
+        </div>
+      ) : folders.length === 0 ? (
+        <div style={s.empty}>파일이 없습니다. 파일을 업로드해보세요!</div>
+      ) : null}
+    </div>
+  )
+}
+
+// ── MeetPoll Tab ──────────────────────────────────────
+function MeetPollTab({ projectId }: { projectId: string }) {
+  const [polls, setPolls] = useState<MeetPollDTO[]>([])
+  const [loading, setLoading] = useState(true)
+  const [selected, setSelected] = useState<MeetPollDetailDTO | null>(null)
+  const [creating, setCreating] = useState(false)
+  const [title, setTitle] = useState('')
+  const [dates, setDates] = useState('')
+  const [startHour, setStartHour] = useState(9)
+  const [endHour, setEndHour] = useState(18)
+  const [selectedSlots, setSelectedSlots] = useState<string[]>([])
+
+  const load = () => MeetPollAPI.listByProject(projectId).then(setPolls).finally(() => setLoading(false))
+  useEffect(() => { load() }, [projectId])
+
+  const openPoll = async (id: string) => { const d = await MeetPollAPI.get(id); setSelected(d); setSelectedSlots(d.my_slots) }
+  const savePoll = async () => { if (!selected) return; const u = await MeetPollAPI.setAvailability(selected.id, selectedSlots); setSelected(u) }
+  const createPoll = async () => {
+    const dateList = dates.split(',').map(d => d.trim()).filter(Boolean)
+    await MeetPollAPI.create(projectId, { title, dates: dateList, start_hour: startHour, end_hour: endHour })
+    setCreating(false); setTitle(''); setDates(''); load()
+  }
+  const toggleSlot = (slot: string) => setSelectedSlots(prev => prev.includes(slot) ? prev.filter(s => s !== slot) : [...prev, slot])
+
+  if (loading) return <div style={s.center}><span className="spinner" /></div>
+
+  if (selected) {
+    const hours = Array.from({ length: selected.end_hour - selected.start_hour }, (_, i) => selected.start_hour + i)
+    return (
+      <div style={{ maxWidth: 700 }}>
+        <button style={s.backLink} onClick={() => setSelected(null)}>← 목록으로</button>
+        <h2 style={{ fontSize: 17, fontWeight: 700, margin: '12px 0 4px' }}>{selected.title}</h2>
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>응답자 {selected.total_respondents}명</div>
+        <div style={{ overflowX: 'auto', marginBottom: 20 }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 12 }}>
+            <thead><tr>
+              <th style={{ padding: '4px 8px', color: 'var(--text-muted)' }}>시간</th>
+              {selected.dates.map(d => <th key={d} style={{ padding: '4px 8px', color: 'var(--text-sub)', fontWeight: 600 }}>{d.slice(5)}</th>)}
+            </tr></thead>
+            <tbody>{hours.map(h => (
+              <tr key={h}>
+                <td style={{ padding: '2px 8px', color: 'var(--text-muted)', textAlign: 'right' }}>{h}:00</td>
+                {selected.dates.map(d => {
+                  const slot = `${d}T${String(h).padStart(2, '0')}:00`
+                  const count = selected.counts[slot] ?? 0
+                  const isSel = selectedSlots.includes(slot)
+                  const isBest = selected.best_slots.includes(slot)
+                  const opacity = selected.total_respondents > 0 ? count / selected.total_respondents : 0
+                  return <td key={d} onClick={() => toggleSlot(slot)} style={{ width: 48, height: 28, cursor: 'pointer', borderRadius: 4, background: isSel ? `rgba(0,169,236,${0.3 + opacity * 0.7})` : count > 0 ? `rgba(0,169,236,${opacity * 0.5})` : 'var(--bg-muted)', border: isBest ? '2px solid var(--primary)' : '1px solid var(--border)', textAlign: 'center', lineHeight: '28px', fontWeight: count > 0 ? 600 : 400, color: count > 0 ? 'var(--primary)' : 'transparent' }}>{count || ''}</td>
+                })}
+              </tr>
+            ))}</tbody>
+          </table>
+        </div>
+        <button style={{ ...s.addBtn, padding: '10px 24px' }} onClick={savePoll}>가능 시간 저장</button>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{ maxWidth: 500 }}>
+      <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: 16 }}>
+        <button style={s.addBtn} onClick={() => setCreating(!creating)}>+ 새 일정 조율</button>
+      </div>
+      {creating && (
+        <div style={{ background: 'var(--bg-card)', borderRadius: 14, padding: 20, border: '1px solid var(--border)', marginBottom: 16 }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <input style={s.input} placeholder="제목" value={title} onChange={e => setTitle(e.target.value)} />
+            <input style={s.input} placeholder="날짜 (쉼표 구분, 예: 2025-06-10, 2025-06-11)" value={dates} onChange={e => setDates(e.target.value)} />
+            <div style={{ display: 'flex', gap: 10 }}>
+              <div style={{ flex: 1 }}><label style={{ fontSize: 12, color: 'var(--text-muted)' }}>시작</label><input style={s.input} type="number" min={0} max={23} value={startHour} onChange={e => setStartHour(+e.target.value)} /></div>
+              <div style={{ flex: 1 }}><label style={{ fontSize: 12, color: 'var(--text-muted)' }}>종료</label><input style={s.input} type="number" min={0} max={23} value={endHour} onChange={e => setEndHour(+e.target.value)} /></div>
+            </div>
+            <button style={s.addBtn} onClick={createPoll}>만들기</button>
+          </div>
+        </div>
+      )}
+      {polls.length === 0 ? <div style={s.empty}>일정 조율이 없습니다</div>
+        : polls.map(p => (
+          <div key={p.id} style={s.meetCard} onClick={() => openPoll(p.id)}>
+            <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4 }}>{p.title}</div>
+            <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>응답자 {p.respondent_count}명 · {p.dates.length}일 · {p.start_hour}~{p.end_hour}시</div>
+          </div>
+        ))}
+    </div>
+  )
+}
+
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, fontWeight: 700, color: 'var(--text-sub)', marginBottom: 10 }}>{title}</h3>
+      {children}
+    </div>
+  )
+}
+
+const s: Record<string, React.CSSProperties> = {
+  center:   { display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 },
+  empty:    { textAlign: 'center', color: 'var(--text-muted)', padding: 40 },
+  topbar:   { padding: '14px 24px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
+  backBtn:  { background: 'none', border: 'none', cursor: 'pointer', fontSize: 20, color: 'var(--text)', padding: '0 4px', lineHeight: 1 },
+  plusBtn:  { width: 34, height: 34, borderRadius: '50%', background: 'var(--primary)', color: '#fff', fontSize: 16, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  actionBtn: {
+    background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14,
+    padding: '20px 10px 16px', cursor: 'pointer', display: 'flex', flexDirection: 'column',
+    alignItems: 'center', justifyContent: 'center', transition: 'box-shadow 0.15s',
+  },
+  card:     { background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' },
+  backLink: { fontSize: 13, color: 'var(--text-muted)', cursor: 'pointer', background: 'none', border: 'none', padding: 0 },
+  input:    { padding: '9px 12px', borderRadius: 10, border: '1px solid var(--border)', fontSize: 13, color: 'var(--text)', background: 'var(--bg-muted)', outline: 'none', width: '100%', boxSizing: 'border-box' as const },
+  addBtn:   { padding: '9px 16px', borderRadius: 10, background: 'var(--primary)', color: '#fff', fontWeight: 600, fontSize: 13, cursor: 'pointer', border: 'none', flexShrink: 0 },
+  chip:     { padding: '4px 12px', borderRadius: 16, border: 'none', cursor: 'pointer', fontSize: 12, transition: 'all 0.15s' },
+  meetCard: { background: 'var(--bg-card)', borderRadius: 12, padding: '14px 18px', border: '1px solid var(--border)', marginBottom: 10, cursor: 'pointer' },
+}

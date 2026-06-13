@@ -1,0 +1,55 @@
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg: #f2f4f6;
+  --bg-card: #ffffff;
+  --bg-muted: #f2f4f6;
+  --text: #1e2328;
+  --text-sub: #4b5563;
+  --text-muted: #9ea5b0;
+  --border: #e8eaed;
+  --primary: #1daaed;
+  --primary-hover: #17a2e0;
+  --primary-fg: #ffffff;
+  --primary-bg: #ddf2fc;
+  --danger: #ff4d4d;
+  --danger-bg: #fff0f0;
+  --success: #2db56a;
+  --success-bg: #dff4e9;
+  --purple: #9b59d4;
+  --purple-bg: #f0e6f9;
+  --sidebar-w: 220px;
+}
+
+html, body, #root {
+  height: 100%;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+button { font-family: inherit; cursor: pointer; border: none; background: none; }
+input, textarea, select { font-family: inherit; }
+a { text-decoration: none; color: inherit; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+/* Utils */
+.truncate { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+@keyframes voicePulse { from { transform: scaleY(0.4); } to { transform: scaleY(1); } }
+.spinner {
+  width: 20px; height: 20px;
+  border: 2px solid var(--border);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+  display: inline-block;
+}
