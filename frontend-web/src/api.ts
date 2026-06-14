@@ -220,7 +220,7 @@ export interface FriendRequestDTO {
 export interface UserSearchResponse { user_id: string; username: string; name: string; }
 
 export interface FolderDTO { id: string; name: string; project_id: string | null; parent_id: string | null; created_at: string; }
-export interface FileDTO { id: string; name: string; mime_type: string | null; size: number; project_id: string | null; folder_id: string | null; url: string | null; created_at: string; }
+export interface FileDTO { id: string; name: string; mime_type: string | null; size_bytes: number; project_id: string | null; folder_id: string | null; url: string | null; created_at: string; }
 
 export const DriveAPI = {
   folders: (projectId?: string) => request<FolderDTO[]>(`/drive/folders${projectId ? `?project_id=${projectId}` : ''}`, { method: 'GET' }),

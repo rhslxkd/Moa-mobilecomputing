@@ -114,7 +114,7 @@ export default function Drive() {
                   <span style={{ fontSize: 20 }}>{f.mime_type?.startsWith('image') ? '🖼️' : '📄'}</span>
                   <div style={{ minWidth: 0 }}>
                     <div style={{ fontWeight: 600, fontSize: 14, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{f.name}</div>
-                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtSize(f.size)}</div>
+                    <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>{fmtSize(f.size_bytes)}</div>
                   </div>
                 </div>
                 <button onClick={() => download(f.id)} style={s.btnGhost}>다운로드</button>
