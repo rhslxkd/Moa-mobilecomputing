@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app.schemas.meeting import (
     MeetingCreate, MeetingResponse, SpeakerMappingRequest,
@@ -46,7 +47,9 @@ async def upload_audio(
     token: str = Depends(bearer_token),
 ):
     audio_bytes = await file.read()
-    return meeting_svc.process_audio(meeting_id, audio_bytes, file.filename or "audio.m4a", token)
+    return await run_in_threadpool(
+        meeting_svc.process_audio, meeting_id, audio_bytes, file.filename or "audio.m4a", token,
+    )
 
 
 @router.post("/{meeting_id}/speaker-mapping", response_model=MeetingResponse)
