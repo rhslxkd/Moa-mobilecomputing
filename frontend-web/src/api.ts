@@ -161,11 +161,11 @@ export const NotificationAPI = {
   markRead: (id: string) => request<void>("/notifications/read", { method: "POST", body: JSON.stringify({ notification_id: id }) }),
 };
 
-export interface NoticeDTO { id: string; room_id: string; content: string; author_name: string; created_at: string; }
+export interface NoticeDTO { id: string; room_id: string; content: string; author_name: string; created_at: string; can_delete: boolean; }
 export interface PollDTO {
   id: string; room_id: string; question: string; options: string[];
   counts: number[]; total_votes: number; my_vote: number | null;
-  author_name: string; closed: boolean; created_at: string;
+  author_name: string; closed: boolean; created_at: string; can_delete: boolean;
 }
 
 export const ChatAPI = {

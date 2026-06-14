@@ -170,7 +170,7 @@ export default function Chat() {
                     <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text)' }}>공지 · {n.author_name}</div>
                     <div style={{ fontSize: 13, color: 'var(--text-muted)' }}>{n.content}</div>
                   </div>
-                  <button onClick={() => delNotice(n.id)} style={s.closeBtn}>×</button>
+                  {n.can_delete && <button onClick={() => delNotice(n.id)} style={s.closeBtn}>×</button>}
                 </div>
               ))}
               {polls.map(p => (
@@ -178,7 +178,7 @@ export default function Chat() {
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                     <span style={{ fontSize: 15 }}>☑️</span>
                     <span style={{ flex: 1, fontWeight: 700, fontSize: 13, color: 'var(--text)' }}>{p.question}</span>
-                    <button onClick={() => delPoll(p.id)} style={s.closeBtn}>×</button>
+                    {p.can_delete && <button onClick={() => delPoll(p.id)} style={s.closeBtn}>×</button>}
                   </div>
                   {p.options.map((opt, i) => {
                     const cnt = p.counts[i] ?? 0
