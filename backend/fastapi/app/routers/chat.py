@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, UploadFile, File
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app.schemas.chat import (
     ChatRoomResponse,
@@ -60,7 +61,9 @@ async def send_file(
     token: str = Depends(bearer_token),
 ):
     data = await file.read()
-    return chat_svc.send_file_message(room_id, data, file.filename or "file", file.content_type, token)
+    return await run_in_threadpool(
+        chat_svc.send_file_message, room_id, data, file.filename or "file", file.content_type, token,
+    )
 
 
 @router.post("/rooms/{room_id}/read", status_code=204)

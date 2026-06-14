@@ -1,5 +1,6 @@
 from typing import Optional
 from fastapi import APIRouter, Depends, Query, UploadFile, File, Form
+from fastapi.concurrency import run_in_threadpool
 from pydantic import BaseModel
 from app.schemas.drive import FolderResponse, FileResponse, FolderCreateBody
 from app.routers.auth import bearer_token
@@ -66,7 +67,8 @@ async def upload_file(
     token: str = Depends(bearer_token),
 ):
     data = await file.read()
-    return drive_svc.upload_file(
+    return await run_in_threadpool(
+        drive_svc.upload_file,
         data, file.filename or "file", file.content_type, project_id, folder_id, token,
     )
 
