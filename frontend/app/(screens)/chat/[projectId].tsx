@@ -66,9 +66,11 @@ function PinnedCards({ notices, polls, onDeleteNotice, onVote, onDeletePoll }: {
             <Text style={[pinnedStyles.title, { color: C.text }]}>공지 · {n.author_name}</Text>
             <Text style={[pinnedStyles.desc, { color: C.textMuted }]} numberOfLines={2}>{n.content}</Text>
           </View>
-          <TouchableOpacity onPress={() => onDeleteNotice(n.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-            <Text style={pinnedStyles.close}>×</Text>
-          </TouchableOpacity>
+          {n.can_delete && (
+            <TouchableOpacity onPress={() => onDeleteNotice(n.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+              <Text style={pinnedStyles.close}>×</Text>
+            </TouchableOpacity>
+          )}
         </View>
       ))}
 
@@ -80,9 +82,11 @@ function PinnedCards({ notices, polls, onDeleteNotice, onVote, onDeletePoll }: {
               <View style={{ flexDirection: "row", alignItems: "center" }}>
                 <Text style={pinnedStyles.icon}>☑️ </Text>
                 <Text style={[pinnedStyles.title, { flex: 1, color: C.text }]} numberOfLines={1}>{p.question}</Text>
-                <TouchableOpacity onPress={() => onDeletePoll(p.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                  <Text style={pinnedStyles.close}>×</Text>
-                </TouchableOpacity>
+                {p.can_delete && (
+                  <TouchableOpacity onPress={() => onDeletePoll(p.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                    <Text style={pinnedStyles.close}>×</Text>
+                  </TouchableOpacity>
+                )}
               </View>
               {p.options.map((opt, i) => {
                 const cnt = p.counts[i] ?? 0;

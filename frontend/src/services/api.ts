@@ -449,6 +449,7 @@ export interface MeetPollDTO {
   end_hour: number;
   created_at: string;
   respondent_count: number;
+  can_delete: boolean;
 }
 
 export interface MeetPollRespondentDTO {
@@ -655,6 +656,7 @@ export interface NoticeDTO {
   content: string;
   author_name: string;
   created_at: string;
+  can_delete: boolean;
 }
 
 export interface PollDTO {
@@ -668,6 +670,7 @@ export interface PollDTO {
   author_name: string;
   closed: boolean;
   created_at: string;
+  can_delete: boolean;
 }
 
 // ── Drive API ──────────────────────────────────────────────

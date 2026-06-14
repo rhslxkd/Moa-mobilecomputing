@@ -402,11 +402,13 @@ def list_notices(room_id: str, token: str) -> list[NoticeResponse]:
         .order("created_at", desc=True).execute()
     ).data
     pmap = _profiles_map([r["created_by"] for r in rows])
+    owner_id = _room_owner_id(room_id)
     return [
         NoticeResponse(
             id=r["id"], room_id=r["room_id"], content=r["content"],
             author_name=_display_name(pmap.get(r["created_by"], {})),
             created_at=r["created_at"],
+            can_delete=(r["created_by"] == user.id or owner_id == user.id),
         )
         for r in rows
     ]
@@ -423,18 +425,41 @@ def create_notice(room_id: str, content: str, token: str) -> NoticeResponse:
     return NoticeResponse(
         id=row["id"], room_id=row["room_id"], content=row["content"],
         author_name=_author_name(user.id), created_at=row["created_at"],
+        can_delete=True,
     )
+
+
+def _room_owner_id(room_id: str) -> str | None:
+    """방이 프로젝트와 연결돼 있으면 그 프로젝트 owner(방장) id, 아니면 None."""
+    room = (
+        supabase_admin.table("chat_rooms").select("project_id")
+        .eq("id", room_id).limit(1).execute()
+    ).data
+    project_id = room[0].get("project_id") if room else None
+    if not project_id:
+        return None
+    proj = (
+        supabase_admin.table("projects").select("owner_id")
+        .eq("id", project_id).limit(1).execute()
+    ).data
+    return proj[0]["owner_id"] if proj else None
+
+
+def _assert_can_delete(room_id: str, created_by: str | None, user_id: str) -> None:
+    """작성자 본인이거나 프로젝트 방장(owner)만 삭제 가능."""
+    if created_by != user_id and _room_owner_id(room_id) != user_id:
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="삭제 권한이 없습니다.")
 
 
 def delete_notice(notice_id: str, token: str) -> None:
     user = _get_user(token)
     rows = (
-        supabase_admin.table("chat_notices").select("room_id")
+        supabase_admin.table("chat_notices").select("room_id, created_by")
         .eq("id", notice_id).limit(1).execute()
     ).data
     if not rows:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="공지를 찾을 수 없습니다.")
-    _assert_member(rows[0]["room_id"], user.id)
+    _assert_can_delete(rows[0]["room_id"], rows[0]["created_by"], user.id)
     supabase_admin.table("chat_notices").delete().eq("id", notice_id).execute()
 
 
@@ -459,6 +484,7 @@ def _build_poll(p: dict, my_user_id: str) -> PollResponse:
         options=options, counts=counts, total_votes=len(votes),
         my_vote=my_vote, author_name=_author_name(p["created_by"]),
         closed=p.get("closed", False), created_at=p["created_at"],
+        can_delete=(p["created_by"] == my_user_id or _room_owner_id(p["room_id"]) == my_user_id),
     )
 
 
@@ -516,12 +542,12 @@ def vote_poll(poll_id: str, option_index: int, token: str) -> PollResponse:
 def delete_poll(poll_id: str, token: str) -> None:
     user = _get_user(token)
     rows = (
-        supabase_admin.table("chat_polls").select("room_id")
+        supabase_admin.table("chat_polls").select("room_id, created_by")
         .eq("id", poll_id).limit(1).execute()
     ).data
     if not rows:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="투표를 찾을 수 없습니다.")
-    _assert_member(rows[0]["room_id"], user.id)
+    _assert_can_delete(rows[0]["room_id"], rows[0]["created_by"], user.id)
     supabase_admin.table("chat_polls").delete().eq("id", poll_id).execute()
 
 

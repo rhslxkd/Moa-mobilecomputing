@@ -51,12 +51,20 @@ def _availability_rows(poll_id: str) -> list[dict]:
     ).data
 
 
-def _build_resp(row: dict, respondent_count: int) -> MeetPollResponse:
+def _build_resp(row: dict, respondent_count: int, user_id: str) -> MeetPollResponse:
+    can_delete = row.get("created_by") == user_id
+    if not can_delete:
+        proj = (
+            supabase_admin.table("projects").select("owner_id")
+            .eq("id", row["project_id"]).limit(1).execute()
+        ).data
+        can_delete = bool(proj and proj[0]["owner_id"] == user_id)
     return MeetPollResponse(
         id=row["id"], project_id=row["project_id"], title=row["title"],
         dates=row.get("dates") or [], start_hour=row.get("start_hour", 9),
         end_hour=row.get("end_hour", 22), created_at=row["created_at"],
         respondent_count=respondent_count,
+        can_delete=can_delete,
     )
 
 
@@ -71,7 +79,7 @@ def list_polls(project_id: str, token: str) -> list[MeetPollResponse]:
     out: list[MeetPollResponse] = []
     for r in rows:
         cnt = len(_availability_rows(r["id"]))
-        out.append(_build_resp(r, cnt))
+        out.append(_build_resp(r, cnt, user.id))
     return out
 
 
@@ -91,7 +99,7 @@ def create_poll(project_id: str, req: MeetPollCreate, token: str) -> MeetPollRes
             "created_by": user.id,
         }).execute()
     ).data[0]
-    return _build_resp(row, 0)
+    return _build_resp(row, 0, user.id)
 
 
 def get_poll(poll_id: str, token: str) -> MeetPollDetail:
@@ -122,7 +130,7 @@ def get_poll(poll_id: str, token: str) -> MeetPollDetail:
     total = len(avails)
     best = [s for s, c in counts.items() if total > 0 and c == total]
 
-    base = _build_resp(poll, total)
+    base = _build_resp(poll, total, user.id)
     return MeetPollDetail(
         **base.model_dump(),
         counts=counts, total_respondents=total, my_slots=my_slots,
@@ -164,6 +172,11 @@ def delete_poll(poll_id: str, token: str) -> None:
     ).data
     if not rows:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="일정 조율을 찾을 수 없습니다.")
-    if not _has_project_access(rows[0]["project_id"], user.id):
-        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="권한이 없습니다.")
+    if rows[0]["created_by"] != user.id:
+        proj = (
+            supabase_admin.table("projects").select("owner_id")
+            .eq("id", rows[0]["project_id"]).limit(1).execute()
+        ).data
+        if not (proj and proj[0]["owner_id"] == user.id):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, detail="삭제 권한이 없습니다.")
     supabase_admin.table("meet_polls").delete().eq("id", poll_id).execute()

@@ -113,9 +113,11 @@ export default function ChatBoardScreen() {
                       {new Date(n.created_at).toLocaleDateString("ko-KR")}
                     </Text>
                   </View>
-                  <TouchableOpacity onPress={() => handleDeleteNotice(n.id)} activeOpacity={0.7}>
-                    <Icon name="option" size={18} color={C.textMuted} />
-                  </TouchableOpacity>
+                  {n.can_delete && (
+                    <TouchableOpacity onPress={() => handleDeleteNotice(n.id)} activeOpacity={0.7}>
+                      <Icon name="option" size={18} color={C.textMuted} />
+                    </TouchableOpacity>
+                  )}
                 </View>
                 <Text style={[styles.noticeContent, { color: C.text }]}>{n.content}</Text>
               </View>

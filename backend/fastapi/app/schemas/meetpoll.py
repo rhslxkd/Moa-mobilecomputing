@@ -18,6 +18,7 @@ class MeetPollResponse(BaseModel):
     end_hour: int
     created_at: str
     respondent_count: int = 0
+    can_delete: bool = False
 
 
 class RespondentResponse(BaseModel):

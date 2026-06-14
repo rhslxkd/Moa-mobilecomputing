@@ -52,6 +52,7 @@ class NoticeResponse(BaseModel):
     content: str
     author_name: str
     created_at: str
+    can_delete: bool = False
 
 
 # ── 투표 ───────────────────────────────────────────────────
@@ -76,3 +77,4 @@ class PollResponse(BaseModel):
     author_name: str
     closed: bool
     created_at: str
+    can_delete: bool = False

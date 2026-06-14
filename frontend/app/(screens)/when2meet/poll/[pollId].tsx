@@ -112,7 +112,7 @@ export default function When2MeetGridScreen() {
       <View style={[s.header, { backgroundColor: C.bgCard, borderBottomColor: C.border, paddingTop: insets.top + 8 }]}>
         <TouchableOpacity onPress={() => router.back()} style={s.iconBtn}><Icon name="back" size={22} color={C.text} /></TouchableOpacity>
         <Text style={[s.headerTitle, { color: C.text }]} numberOfLines={1}>{poll.title}</Text>
-        <TouchableOpacity onPress={handleDelete} style={s.iconBtn}><Icon name="stop" size={18} color={C.textMuted} /></TouchableOpacity>
+        {poll.can_delete && <TouchableOpacity onPress={handleDelete} style={s.iconBtn}><Icon name="stop" size={18} color={C.textMuted} /></TouchableOpacity>}
       </View>
 
       <ScrollView contentContainerStyle={{ paddingBottom: 100 }}>
