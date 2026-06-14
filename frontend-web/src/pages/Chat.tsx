@@ -64,6 +64,15 @@ export default function Chat() {
     try { await ChatAPI.createPoll(activeRoom.id, question.trim(), options); loadBoards(activeRoom.id) } catch (e: any) { alert(e.message) }
   }
 
+  const leaveRoom = async () => {
+    if (!activeRoom || !window.confirm('이 채팅방에서 나갈까요?')) return
+    try {
+      await ChatAPI.leaveRoom(activeRoom.id)
+      setRooms(prev => prev.filter(r => r.id !== activeRoom.id))
+      setActiveRoom(null); setMessages([]); setNotices([]); setPolls([])
+    } catch (e: any) { alert(e.message) }
+  }
+
   const vote = async (pollId: string, idx: number) => {
     if (!activeRoom) return
     try { await ChatAPI.votePoll(pollId, idx); loadBoards(activeRoom.id) } catch (e: any) { alert(e.message) }
@@ -121,9 +130,7 @@ export default function Chat() {
             ...s.roomItem,
             background: activeRoom?.id === r.id ? 'var(--primary-bg)' : 'transparent',
           }}>
-            <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'var(--bg-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, flexShrink: 0 }}>
-              {r.type === 'project' ? '📁' : '👤'}
-            </div>
+            <MoaAvatar seed={r.name} size={40} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 2 }}>
                 <span style={{ fontWeight: 600, fontSize: 13, color: 'var(--text)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.name}</span>
@@ -146,6 +153,7 @@ export default function Chat() {
             <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
               <button onClick={addNotice} style={s.boardBtn}>📣 공지</button>
               <button onClick={addPoll} style={s.boardBtn}>☑️ 투표</button>
+              <button onClick={leaveRoom} style={{ ...s.boardBtn, color: 'var(--danger)' }}>나가기</button>
             </div>
           </div>
 
@@ -250,6 +258,24 @@ export default function Chat() {
 
 function SendIcon() {
   return <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5"><path d="M22 2L11 13"/><path d="M22 2L15 22l-4-9-9-4 20-7z"/></svg>
+}
+
+// 앱(모바일)과 동일한 카카오풍 블롭 아바타
+const AVATAR_BG = ['#A1C4DF', '#99BCCC', '#A9B3D6', '#B9B2D8', '#9BC4B6', '#C4B89B']
+function avatarColor(seed: string) {
+  let h = 0
+  for (const c of seed) h += c.charCodeAt(0)
+  return AVATAR_BG[h % AVATAR_BG.length]
+}
+function MoaAvatar({ seed, size = 40 }: { seed: string; size?: number }) {
+  return (
+    <div style={{ width: size, height: size, borderRadius: size * 0.4, background: avatarColor(seed), display: 'flex', alignItems: 'flex-end', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
+      <svg viewBox="0 0 24 24" width={size * 1.1} height={size * 1.1} style={{ marginBottom: -size * 0.1 }}>
+        <circle cx="12" cy="9.5" r="4" fill="white" />
+        <path d="M4 24C4 19 7.5 15.5 12 15.5C16.5 15.5 20 19 20 24Z" fill="white" />
+      </svg>
+    </div>
+  )
 }
 
 const s: Record<string, React.CSSProperties> = {

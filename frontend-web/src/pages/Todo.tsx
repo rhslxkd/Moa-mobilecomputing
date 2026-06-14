@@ -161,9 +161,84 @@ function DateRow({ label, dateStr, ampm, hour, minute, active, onDateChange, onT
   )
 }
 
+// ── Monthly Calendar View ─────────────────────────────────────
+function dateKey(iso: string | null) {
+  if (!iso) return ''
+  const d = new Date(iso)
+  return toDateStr(d)
+}
+function MonthCalendar({ todos, onToggle, onDelete }: { todos: TodoDTO[]; onToggle: (id: string) => void; onDelete: (id: string) => void }) {
+  const today = new Date()
+  const [year, setYear] = useState(today.getFullYear())
+  const [month, setMonth] = useState(today.getMonth())
+  const [selected, setSelected] = useState(toDateStr(today))
+
+  const byDate: Record<string, TodoDTO[]> = {}
+  todos.forEach(t => { const k = dateKey(t.due_date); if (k) (byDate[k] ||= []).push(t) })
+
+  const lastDay = new Date(year, month + 1, 0).getDate()
+  const startDow = new Date(year, month, 1).getDay()
+  const cells: (number | null)[] = []
+  for (let i = 0; i < startDow; i++) cells.push(null)
+  for (let d = 1; d <= lastDay; d++) cells.push(d)
+  while (cells.length % 7 !== 0) cells.push(null)
+
+  const prev = () => { if (month === 0) { setYear(y => y - 1); setMonth(11) } else setMonth(m => m - 1) }
+  const next = () => { if (month === 11) { setYear(y => y + 1); setMonth(0) } else setMonth(m => m + 1) }
+
+  const selectedTodos = byDate[selected] || []
+
+  return (
+    <div style={{ maxWidth: 700 }}>
+      <div style={{ ...s.card, padding: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+          <button onClick={prev} style={cs.nav}>‹</button>
+          <span style={{ fontWeight: 700, fontSize: 15 }}>{year}년 {month + 1}월</span>
+          <button onClick={next} style={cs.nav}>›</button>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 6 }}>
+          {KR_DAYS.map(d => <div key={d} style={{ textAlign: 'center', fontSize: 12, color: 'var(--text-muted)' }}>{d}</div>)}
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
+          {cells.map((day, i) => {
+            if (!day) return <div key={i} />
+            const key = toDateStr(new Date(year, month, day))
+            const list = byDate[key] || []
+            const isSel = key === selected
+            const isToday = key === toDateStr(today)
+            return (
+              <button key={i} onClick={() => setSelected(key)} style={{
+                minHeight: 56, padding: 4, borderRadius: 8, cursor: 'pointer', textAlign: 'left',
+                border: isSel ? '2px solid var(--primary)' : '1px solid var(--border)',
+                background: isSel ? 'var(--primary-bg)' : 'var(--bg-card)',
+                display: 'flex', flexDirection: 'column', gap: 2,
+              }}>
+                <span style={{ fontSize: 12, fontWeight: isToday ? 800 : 500, color: isToday ? 'var(--primary)' : 'var(--text)' }}>{day}</span>
+                {list.slice(0, 2).map(t => (
+                  <span key={t.id} style={{ fontSize: 10, color: t.done ? 'var(--text-muted)' : 'var(--text)', textDecoration: t.done ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', background: 'var(--bg-muted)', borderRadius: 4, padding: '1px 4px' }}>{t.title}</span>
+                ))}
+                {list.length > 2 && <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>+{list.length - 2}</span>}
+              </button>
+            )
+          })}
+        </div>
+      </div>
+
+      {/* 선택한 날짜의 할 일 */}
+      <div style={{ ...s.card, marginTop: 14 }}>
+        <div style={{ padding: '14px 18px', fontWeight: 700, fontSize: 14, borderBottom: '1px solid var(--border)' }}>{toKrDate(selected)} · {selectedTodos.length}건</div>
+        {selectedTodos.length === 0 ? (
+          <div style={{ padding: 24, textAlign: 'center', color: 'var(--text-muted)', fontSize: 13 }}>이 날 할 일이 없어요.</div>
+        ) : selectedTodos.map(t => <TodoItem key={t.id} todo={t} onToggle={onToggle} onDelete={onDelete} />)}
+      </div>
+    </div>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────
 export default function Todo() {
   const [mode, setMode] = useState<'list' | 'add'>('list')
+  const [listView, setListView] = useState<'list' | 'calendar'>('list')
   const [todos, setTodos] = useState<TodoDTO[]>([])
   const [projects, setProjects] = useState<ProjectDTO[]>([])
   const [listLoading, setListLoading] = useState(true)
@@ -256,11 +331,19 @@ export default function Todo() {
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
         <div style={s.topbar}>
           <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>투두</span>
-          <button style={s.plusBtn} onClick={() => setMode('add')}>+</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', background: 'var(--bg-muted)', borderRadius: 8, padding: 2 }}>
+              <button onClick={() => setListView('list')} style={{ ...s.segBtn, background: listView === 'list' ? 'var(--bg-card)' : 'transparent', color: listView === 'list' ? 'var(--primary)' : 'var(--text-muted)' }}>목록</button>
+              <button onClick={() => setListView('calendar')} style={{ ...s.segBtn, background: listView === 'calendar' ? 'var(--bg-card)' : 'transparent', color: listView === 'calendar' ? 'var(--primary)' : 'var(--text-muted)' }}>달력</button>
+            </div>
+            <button style={s.plusBtn} onClick={() => setMode('add')}>+</button>
+          </div>
         </div>
         <div style={{ overflowY: 'auto', padding: 24 }}>
           {listLoading ? (
             <div style={{ display: 'flex', justifyContent: 'center', padding: 60 }}><span className="spinner" /></div>
+          ) : listView === 'calendar' ? (
+            <MonthCalendar todos={todos} onToggle={handleToggle} onDelete={handleDelete} />
           ) : todos.length === 0 ? (
             <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 60 }}>
               <div style={{ fontSize: 40, marginBottom: 12 }}>✅</div>
@@ -412,6 +495,7 @@ function TodoItem({ todo, onToggle, onDelete }: { todo: TodoDTO; onToggle: (id: 
 const s: Record<string, React.CSSProperties> = {
   topbar: { padding: '16px 24px', background: 'var(--bg-card)', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexShrink: 0 },
   plusBtn: { width: 34, height: 34, borderRadius: '50%', background: 'var(--primary)', color: '#fff', fontSize: 20, border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  segBtn: { padding: '5px 14px', borderRadius: 6, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600 },
   card: { background: 'var(--bg-card)', borderRadius: 14, border: '1px solid var(--border)', overflow: 'hidden' },
   tabs: { display: 'flex', padding: '12px 12px 0', borderBottom: '1px solid var(--border)', gap: 8 },
   tab: { flex: 1, padding: '10px', borderRadius: '10px 10px 0 0', fontWeight: 600, fontSize: 14, border: 'none', cursor: 'pointer', transition: 'all 0.15s' },

@@ -175,6 +175,7 @@ export const ChatAPI = {
   messages: (roomId: string) => request<MessageDTO[]>(`/chat/rooms/${roomId}/messages`, { method: "GET" }),
   send: (roomId: string, content: string) => request<MessageDTO>(`/chat/rooms/${roomId}/messages`, { method: "POST", body: JSON.stringify({ content }) }),
   markRead: (roomId: string) => request<void>(`/chat/rooms/${roomId}/read`, { method: "POST" }),
+  leaveRoom: (roomId: string) => request<void>(`/chat/rooms/${roomId}/leave`, { method: "POST" }),
   readStatus: (roomId: string) => request<{ user_id: string; last_read_at: string | null }[]>(`/chat/rooms/${roomId}/read-status`, { method: "GET" }),
   sendFile: async (roomId: string, file: File): Promise<MessageDTO> => {
     const form = new FormData();
@@ -234,6 +235,21 @@ export const DriveAPI = {
   },
   deleteFile: (id: string) => request<void>(`/drive/files/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: string) => request<{ url: string }>(`/drive/files/${id}/download`, { method: 'GET' }),
+  uploadFile: async (file: File, projectId?: string, folderId?: string): Promise<FileDTO> => {
+    const form = new FormData();
+    form.append('file', file);
+    if (projectId) form.append('project_id', projectId);
+    if (folderId) form.append('folder_id', folderId);
+    const token = TokenStore.get();
+    const res = await fetch(`${BASE_URL}/drive/files`, {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: form,
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data?.detail as string) || '업로드에 실패했습니다.');
+    return data as FileDTO;
+  },
 };
 
 export const FriendAPI = {

@@ -1,11 +1,11 @@
 import { useState } from 'react'
-import { ProjectAPI } from '../api'
+import { ProjectAPI, FriendAPI } from '../api'
 
 const EMOJIS = ['📁', '🚀', '💡', '🎯', '🔥', '⭐', '🎨', '📊', '🛠️', '🌟', '💻', '📱']
 const COLORS = ['#00A9EC', '#7C3AED', '#16A34A', '#DC2626', '#D97706', '#0D9488', '#EC4899', '#6366F1']
 const ROLE_OPTIONS = ['팀장', '팀원', '디자이너', '개발자', '기획자', 'PM']
 
-interface MemberRow { name: string; role: string }
+interface MemberRow { name: string; role: string; user_id?: string }
 
 interface Props {
   onClose: () => void
@@ -27,11 +27,27 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
   const [members, setMembers] = useState<MemberRow[]>([{ name: '', role: '팀장' }])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
+  // 친구 검색
+  const [friendQ, setFriendQ] = useState('')
+  const [friendSearching, setFriendSearching] = useState(false)
 
   const addMember = () => setMembers(m => [...m, { name: '', role: '팀원' }])
   const removeMember = (i: number) => setMembers(m => m.filter((_, idx) => idx !== i))
   const updateMember = (i: number, field: keyof MemberRow, val: string) =>
     setMembers(m => m.map((r, idx) => idx === i ? { ...r, [field]: val } : r))
+
+  const searchFriend = async () => {
+    if (!friendQ.trim()) return
+    setFriendSearching(true); setError('')
+    try {
+      const f = await FriendAPI.search(friendQ.trim())
+      if (members.some(m => m.user_id === f.user_id)) { setError('이미 추가된 팀원이에요.'); return }
+      setMembers(m => [...m, { name: f.name, role: '팀원', user_id: f.user_id }])
+      setFriendQ('')
+    } catch (e: any) {
+      setError(e.message || '사용자를 찾을 수 없습니다.')
+    } finally { setFriendSearching(false) }
+  }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -45,7 +61,7 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
         name, emoji, color, status,
         start_date: toDotDate(startDate),
         end_date: toDotDate(endDate),
-        members: validMembers.map(m => ({ name: m.name.trim(), roles: [m.role] })),
+        members: validMembers.map(m => ({ name: m.name.trim(), roles: [m.role], user_id: m.user_id })),
       })
       onCreated()
     } catch (err: any) {
@@ -117,8 +133,23 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
           <div style={s.field}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <label style={s.label}>팀원</label>
-              <button type="button" onClick={addMember} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ 추가</button>
+              <button type="button" onClick={addMember} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ 직접 입력</button>
             </div>
+
+            {/* 친구 검색으로 추가 */}
+            <div style={{ display: 'flex', gap: 8 }}>
+              <input
+                style={{ ...s.input, flex: 1 }}
+                placeholder="친구 아이디(username)로 검색해 추가"
+                value={friendQ}
+                onChange={e => setFriendQ(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); searchFriend() } }}
+              />
+              <button type="button" onClick={searchFriend} disabled={friendSearching} style={{ padding: '10px 16px', borderRadius: 10, background: 'var(--primary)', color: '#fff', border: 'none', fontWeight: 700, fontSize: 13, cursor: 'pointer', flexShrink: 0 }}>
+                {friendSearching ? '...' : '찾기'}
+              </button>
+            </div>
+
             <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
               {members.map((m, i) => (
                 <div key={i} style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
@@ -127,7 +158,9 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
                     placeholder="이름"
                     value={m.name}
                     onChange={e => updateMember(i, 'name', e.target.value)}
+                    readOnly={!!m.user_id}
                   />
+                  {m.user_id && <span title="계정 연결됨(초대)" style={{ fontSize: 14, flexShrink: 0 }}>🔗</span>}
                   <select
                     style={{ ...s.input, width: 100, flexShrink: 0 }}
                     value={m.role}

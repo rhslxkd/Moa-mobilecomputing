@@ -3,10 +3,11 @@ import { NavLink } from 'react-router-dom'
 import { ProjectAPI } from '../api'
 
 const navItems = [
-  { to: '/dashboard', label: '홈' },
-  { to: '/chat',      label: '채팅',  alertKey: 'chat' },
-  { to: '/todo',      label: '투두',  alertKey: 'todo' },
-  { to: '/profile',   label: '프로필' },
+  { to: '/dashboard', label: '홈',    emoji: '🏠' },
+  { to: '/chat',      label: '채팅',  emoji: '💬', alertKey: 'chat' },
+  { to: '/todo',      label: '투두',  emoji: '✅', alertKey: 'todo' },
+  { to: '/profile',   label: '프로필', emoji: '👤' },
+  { to: '/drive',     label: '드라이브', emoji: '📁' },
 ]
 
 export default function Sidebar() {
@@ -47,11 +48,11 @@ export default function Sidebar() {
 
       {/* Nav */}
       <nav style={{ flex: 1, padding: '4px 12px', display: 'flex', flexDirection: 'column', gap: 2 }}>
-        {navItems.map(({ to, label, alertKey }) => {
+        {navItems.map(({ to, label, emoji, alertKey }) => {
           const hasAlert = alertKey === 'chat' ? chatAlert : alertKey === 'todo' ? todoAlert : false
           return (
             <NavLink key={to} to={to} style={({ isActive }) => ({
-              display: 'flex', alignItems: 'center', gap: 8,
+              display: 'flex', alignItems: 'center', gap: 10,
               padding: '10px 14px', borderRadius: 10,
               fontWeight: isActive ? 700 : 500, fontSize: 14,
               color: isActive ? 'var(--primary)' : 'var(--text)',
@@ -59,13 +60,11 @@ export default function Sidebar() {
               textDecoration: 'none',
               transition: 'all 0.15s',
             })}>
+              <span style={{ fontSize: 16, width: 20, textAlign: 'center', flexShrink: 0 }}>{emoji}</span>
+              <span style={{ flex: 1 }}>{label}</span>
               {hasAlert && (
                 <div style={{ width: 7, height: 7, borderRadius: '50%', background: '#ff4d4d', flexShrink: 0 }} />
               )}
-              {!hasAlert && (
-                <div style={{ width: 7, height: 7, flexShrink: 0 }} />
-              )}
-              {label}
             </NavLink>
           )
         })}

@@ -84,8 +84,22 @@ export default function ProjectDetail() {
     { label: '채팅',        icon: '💬',  action: handleChat },
     { label: 'To-Do',      icon: '✅',  action: () => setView('todo') },
     { label: '파일',        icon: '📁',  action: () => setView('drive') },
-    { label: '편집',        icon: '⚙️',  action: () => setView('meetpoll') },
+    { label: '일정 조율',    icon: '📅',  action: () => setView('meetpoll') },
   ]
+
+  const handleEditProject = async () => {
+    if (!project) return
+    const name = window.prompt('프로젝트 이름 수정', project.name)
+    if (name === null) return
+    try { await ProjectAPI.update(project.id, { name: name.trim() || project.name }); reloadProject() }
+    catch (e: any) { alert(e.message) }
+  }
+
+  const handleDeleteProject = async () => {
+    if (!project || !window.confirm(`'${project.name}' 프로젝트를 삭제할까요? 되돌릴 수 없어요.`)) return
+    try { await ProjectAPI.delete(project.id); navigate('/dashboard') }
+    catch (e: any) { alert(e.message) }
+  }
 
   const viewTitle: Record<View, string> = {
     overview: project.name,
@@ -109,10 +123,12 @@ export default function ProjectDetail() {
           )}
           <span style={{ fontSize: 17, fontWeight: 700, color: 'var(--text)' }}>{viewTitle[view]}</span>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <button style={s.plusBtn}>🔔</button>
-          <button style={s.plusBtn}>+</button>
-        </div>
+        {view === 'overview' && isLeader && (
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={handleEditProject} style={s.plusBtn} title="프로젝트 수정">✏️</button>
+            <button onClick={handleDeleteProject} style={s.plusBtn} title="프로젝트 삭제">🗑️</button>
+          </div>
+        )}
       </div>
 
       {/* Content */}

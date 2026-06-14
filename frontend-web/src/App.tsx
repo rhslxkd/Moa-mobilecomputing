@@ -14,6 +14,7 @@ import Profile from './pages/Profile'
 import ProfileEdit from './pages/ProfileEdit'
 import Friends from './pages/Friends'
 import Notifications from './pages/Notifications'
+import Drive from './pages/Drive'
 
 function AppLayout() {
   return (
@@ -64,6 +65,7 @@ export default function App() {
             <Route path="/profile/edit" element={<ProfileEdit />} />
             <Route path="/friends" element={<Friends />} />
             <Route path="/notifications" element={<Notifications />} />
+            <Route path="/drive" element={<Drive />} />
           </Route>
 
           {/* Default */}
