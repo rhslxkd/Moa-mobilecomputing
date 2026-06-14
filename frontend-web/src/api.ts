@@ -85,7 +85,7 @@ export interface MeetingDTO {
 
 export interface ReportDTO {
   project_id: string; project_name: string;
-  members: { member_id: string; name: string; todos_done: number; todos_total: number; contribution: number; score: number; speak_seconds: number; ai_comment: string | null }[];
+  members: { member_id: string; user_id: string | null; name: string; todos_done: number; todos_total: number; contribution: number; score: number; speak_seconds: number; ai_comment: string | null }[];
   total_todos: number; done_todos: number; completion_rate: number;
   meeting_count: number; overall_comment: string | null;
 }

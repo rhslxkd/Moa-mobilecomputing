@@ -127,7 +127,7 @@ def get_report(project_id: str, token: str) -> ReportResponse:
 
         member_reports.append(
             MemberReportResponse(
-                member_id=m["id"], name=m["name"],
+                member_id=m["id"], user_id=m.get("user_id"), name=m["name"],
                 todos_done=m_done, todos_total=len(m_todos),
                 contribution=contribution, score=fallback_score, speak_seconds=0,
             )

@@ -6,6 +6,7 @@ from typing import Optional
 
 class MemberReportResponse(BaseModel):
     member_id: str
+    user_id: Optional[str] = None   # 로그인 사용자 식별용(계정 연결 멤버)
     name: str
     todos_done: int
     todos_total: int

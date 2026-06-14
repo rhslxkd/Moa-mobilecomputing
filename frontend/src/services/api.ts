@@ -489,6 +489,7 @@ export const MeetPollAPI = {
 // ── Report API ─────────────────────────────────────────────
 export interface MemberReportDTO {
   member_id: string;
+  user_id: string | null;
   name: string;
   todos_done: number;
   todos_total: number;

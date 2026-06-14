@@ -20,12 +20,14 @@ import * as Print from "expo-print";
 import * as Sharing from "expo-sharing";
 import { useTheme } from "@/hooks/useTheme";
 import { useProject } from "@/contexts/ProjectContext";
+import { useAuth } from "@/contexts/AuthContext";
 import OptionSheet, { REPORT_OPTIONS } from "@/components/modals/OptionSheet";
 import Icon from "@/components/common/Icon";
 import MoaLogo from "@/components/common/MoaLogo";
 import { ReportAPI } from "@/services/api";
 
 interface MemberReport {
+  userId: string | null;
   name: string;
   initial: string;
   contribution: number;
@@ -77,6 +79,7 @@ export default function ReportScreen() {
   const router = useRouter();
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
   const { projects } = useProject();
+  const { user } = useAuth();
   const [optionOpen, setOptionOpen] = useState(false);
 
   const project = projects.find((p) => p.id === projectId) ?? projects[0];
@@ -93,6 +96,7 @@ export default function ReportScreen() {
       setDataLoading(true);
       ReportAPI.get(projectId).then((r) => {
         setMembers(r.members.map((m) => ({
+          userId: m.user_id,
           name: m.name,
           initial: m.name.charAt(0),
           contribution: m.contribution,
@@ -110,12 +114,15 @@ export default function ReportScreen() {
     }, [projectId])
   );
 
-  // 통계 계산 (점수 기준)
-  const myScore = members[0]?.score ?? 0;
+  // 통계 계산 (점수 기준) — 본인(user_id 일치)을 찾아 내 점수/순위 표시
+  const myIndex = members.findIndex((m) => m.userId && m.userId === user?.id);
+  const myMember = myIndex >= 0 ? members[myIndex] : null;
+  const myScore = myMember?.score ?? 0;
   const teamAvg = members.length
     ? Math.round(members.reduce((s, m) => s + m.score, 0) / members.length)
     : 0;
-  const myRank = 1;
+  // members는 백엔드에서 점수 내림차순 정렬 → 순위 = 인덱스+1
+  const myRank = myIndex >= 0 ? myIndex + 1 : members.length;
 
   // 미배정 할 일 = 전체 - 멤버 합
   const assignedTotal = members.reduce((s, m) => s + m.todosTotal, 0);
@@ -192,7 +199,7 @@ export default function ReportScreen() {
         <!-- 상단 통계 4개 -->
         <div style="display:flex;gap:10px;margin-bottom:20px">
           ${[
-            { label: "순위", value: "1위" },
+            { label: "순위", value: `${myRank}위` },
             { label: "내 점수", value: `${myScore}점` },
             { label: "팀 평균", value: `${teamAvg}점` },
             { label: "회의 횟수", value: `${meetingCount}회` },
