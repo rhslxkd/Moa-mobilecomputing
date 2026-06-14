@@ -161,6 +161,13 @@ export const NotificationAPI = {
   markRead: (id: string) => request<void>("/notifications/read", { method: "POST", body: JSON.stringify({ notification_id: id }) }),
 };
 
+export const InvitationAPI = {
+  accept: (memberId: string, roles: string[]) =>
+    request<void>(`/invitations/${memberId}/accept`, { method: "POST", body: JSON.stringify({ roles }) }),
+  decline: (memberId: string) =>
+    request<void>(`/invitations/${memberId}/decline`, { method: "DELETE" }),
+};
+
 export interface NoticeDTO { id: string; room_id: string; content: string; author_name: string; created_at: string; can_delete: boolean; }
 export interface PollDTO {
   id: string; room_id: string; question: string; options: string[];
