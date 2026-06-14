@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
 from openai import RateLimitError, APIError, OpenAIError
@@ -9,6 +11,8 @@ from app.schemas.meeting import (
 )
 from app.services.transcribe import transcribe_audio, summarize_transcript
 from app.services import ai
+
+logger = logging.getLogger("moa.meeting")
 
 
 def _get_user(token: str):
@@ -51,8 +55,9 @@ def _attendance_rows(meeting_id: str) -> list[dict]:
             .order("joined_at")
             .execute()
         ).data
-    except Exception:
+    except Exception as e:
         # meeting_attendance 테이블이 아직 없으면(SQL 미적용) 빈 목록
+        logger.warning("meeting_attendance 조회 실패(테이블 미적용?): %s", e)
         return []
 
 
@@ -294,7 +299,8 @@ def process_audio(meeting_id: str, audio_bytes: bytes, filename: str, token: str
     try:
         for it in ai.extract_action_items(transcript):
             action_items.append({"title": it.get("title", ""), "date": it.get("date"), "added": False})
-    except Exception:
+    except Exception as e:
+        logger.warning("액션아이템 추출 실패: %s", e)
         action_items = []
 
     try:
@@ -334,7 +340,8 @@ def _auto_map_speakers(meeting_id: str, speaker_stats: dict, speaker_samples: di
     name_to_id = {m["name"]: m["id"] for m in members if m.get("name")}
     try:
         matched = ai.match_speakers_to_members(speaker_samples, list(name_to_id.keys()), transcript)
-    except Exception:
+    except Exception as e:
+        logger.warning("화자-멤버 자동 매칭 실패: %s", e)
         return
     if not matched:
         return

@@ -1,3 +1,4 @@
+import logging
 from datetime import date, datetime, timezone
 
 from fastapi import HTTPException, status
@@ -5,6 +6,8 @@ from supabase_auth.errors import AuthApiError
 
 from app.core.supabase import supabase_admin
 from app.schemas.notification import NotificationResponse
+
+logger = logging.getLogger("moa.notification")
 
 
 def _get_user(token: str):
@@ -53,8 +56,8 @@ def mark_read(notification_id: str, token: str) -> None:
         supabase_admin.table("notification_reads").insert(
             {"user_id": user.id, "notification_id": notification_id}
         ).execute()
-    except Exception:
-        pass  # unique 충돌 = 이미 읽음
+    except Exception as e:
+        logger.debug("알림 읽음 처리 중복/실패(이미 읽음 가능): %s", e)  # unique 충돌 = 이미 읽음
 
 
 def list_notifications(token: str) -> list[NotificationResponse]:

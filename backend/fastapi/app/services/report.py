@@ -1,9 +1,13 @@
+import logging
+
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
 
 from app.core.supabase import supabase_admin
 from app.schemas.report import ReportResponse, MemberReportResponse
 from app.services import ai
+
+logger = logging.getLogger("moa.report")
 
 # 난이도 가중치: 1=하, 2=중, 3=상
 _DIFF_WEIGHT = {1: 1, 2: 2, 3: 3}
@@ -185,7 +189,8 @@ def get_report(project_id: str, token: str) -> ReportResponse:
                     except (ValueError, TypeError):
                         pass
                 r.ai_comment = comments.get(r.name)
-        except Exception:
+        except Exception as e:
+            logger.warning("리포트 AI 코멘트/점수 생성 실패: %s", e)
             overall_comment = None
 
     # 점수 내림차순 정렬 (1등이 맨 앞)
