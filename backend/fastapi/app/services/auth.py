@@ -231,15 +231,20 @@ def setup_name(req: SetupNameRequest, token: str) -> None:
 def setup_affiliation(req: SetupAffiliationRequest, token: str) -> None:
     user = _get_user_from_token(token)
 
-    supabase_admin.table("user_affiliations").insert(
-        {
-            "user_id": user.id,
-            "affiliation_type": req.affiliation_type.value,
-            "organization_name": req.organization_name,
-            "department": req.department,
-            "student_id": req.student_id,
-        }
-    ).execute()
+    # 소속 정보 upsert (있으면 update, 없으면 insert) — 중복 행 방지
+    aff_data = {
+        "affiliation_type": req.affiliation_type.value,
+        "organization_name": req.organization_name,
+        "department": req.department,
+        "student_id": req.student_id,
+    }
+    existing = (
+        supabase_admin.table("user_affiliations").select("id").eq("user_id", user.id).limit(1).execute()
+    ).data
+    if existing:
+        supabase_admin.table("user_affiliations").update(aff_data).eq("user_id", user.id).execute()
+    else:
+        supabase_admin.table("user_affiliations").insert({"user_id": user.id, **aff_data}).execute()
 
     supabase_admin.table("profiles").update(
         {"onboarding_completed": True}
