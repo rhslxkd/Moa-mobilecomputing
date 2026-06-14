@@ -238,7 +238,7 @@ function MonthCalendar({ todos, onToggle, onDelete }: { todos: TodoDTO[]; onTogg
 // ── Main Page ─────────────────────────────────────────────────
 export default function Todo() {
   const [mode, setMode] = useState<'list' | 'add'>('list')
-  const [listView, setListView] = useState<'list' | 'calendar'>('list')
+  const [listView, setListView] = useState<'list' | 'calendar'>('calendar')
   const [todos, setTodos] = useState<TodoDTO[]>([])
   const [projects, setProjects] = useState<ProjectDTO[]>([])
   const [listLoading, setListLoading] = useState(true)

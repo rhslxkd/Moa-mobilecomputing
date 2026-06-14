@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { DriveAPI, type FolderDTO, type FileDTO } from '../api'
+import { DriveAPI, ProjectAPI, type FolderDTO, type FileDTO, type ProjectDTO } from '../api'
 
 function fmtSize(n: number) {
   if (n < 1024) return `${n} B`
@@ -11,23 +11,31 @@ export default function Drive() {
   const [folders, setFolders] = useState<FolderDTO[]>([])
   const [files, setFiles] = useState<FileDTO[]>([])
   const [loading, setLoading] = useState(true)
-  // 폴더 네비게이션 스택 (전체=개인 드라이브, project_id 없음)
+  // 드라이브 컨텍스트: '' = 내 드라이브(개인), 그 외 = project_id
+  const [ctx, setCtx] = useState<string>('')
+  const [projects, setProjects] = useState<ProjectDTO[]>([])
+  // 폴더 네비게이션 스택
   const [stack, setStack] = useState<{ id: string; name: string }[]>([])
   const fileRef = useRef<HTMLInputElement>(null)
   const current = stack[stack.length - 1]
+  const projectId = ctx || undefined
+
+  useEffect(() => { ProjectAPI.list().then(setProjects).catch(() => {}) }, [])
 
   const load = () => {
     setLoading(true)
     Promise.all([
-      DriveAPI.folders(undefined).catch(() => [] as FolderDTO[]),
-      DriveAPI.files(undefined, current?.id).catch(() => [] as FileDTO[]),
+      DriveAPI.folders(projectId).catch(() => [] as FolderDTO[]),
+      DriveAPI.files(projectId, current?.id).catch(() => [] as FileDTO[]),
     ]).then(([fl, fi]) => {
       // 현재 폴더의 하위 폴더만 (parent_id 일치)
       setFolders(fl.filter(f => (f.parent_id ?? null) === (current?.id ?? null)))
       setFiles(fi)
     }).finally(() => setLoading(false))
   }
-  useEffect(() => { load() }, [current?.id])
+  useEffect(() => { load() }, [current?.id, ctx])
+  // 컨텍스트 바뀌면 경로 초기화
+  useEffect(() => { setStack([]) }, [ctx])
 
   const openFolder = (f: FolderDTO) => setStack(prev => [...prev, { id: f.id, name: f.name }])
   const goTo = (idx: number) => setStack(prev => prev.slice(0, idx))
@@ -35,13 +43,13 @@ export default function Drive() {
   const createFolder = async () => {
     const name = window.prompt('새 폴더 이름')
     if (!name?.trim()) return
-    try { await DriveAPI.createFolder(name.trim(), undefined, current?.id); load() } catch (e: any) { alert(e.message) }
+    try { await DriveAPI.createFolder(name.trim(), projectId, current?.id); load() } catch (e: any) { alert(e.message) }
   }
 
   const onUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]; e.target.value = ''
     if (!file) return
-    try { await DriveAPI.uploadFile(file, undefined, current?.id); load() } catch (e: any) { alert(e.message) }
+    try { await DriveAPI.uploadFile(file, projectId, current?.id); load() } catch (e: any) { alert(e.message) }
   }
 
   const download = async (id: string) => {
@@ -62,6 +70,10 @@ export default function Drive() {
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={s.topbar}>
         <span style={{ fontSize: 18, fontWeight: 700, color: 'var(--text)' }}>📁 드라이브</span>
+        <select value={ctx} onChange={e => setCtx(e.target.value)} style={{ marginLeft: 12, padding: '8px 12px', borderRadius: 8, border: '1px solid var(--border)', background: 'var(--bg-muted)', fontSize: 13, color: 'var(--text)', outline: 'none' }}>
+          <option value="">내 드라이브</option>
+          {projects.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.name}</option>)}
+        </select>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={onUpload} />
           <button onClick={createFolder} style={s.btnGhost}>+ 폴더</button>
@@ -71,7 +83,7 @@ export default function Drive() {
 
       {/* 경로 */}
       <div style={{ padding: '10px 24px', display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, color: 'var(--text-muted)', borderBottom: '1px solid var(--border)' }}>
-        <span onClick={() => goTo(0)} style={{ cursor: 'pointer', fontWeight: stack.length === 0 ? 700 : 500, color: stack.length === 0 ? 'var(--primary)' : 'var(--text-muted)' }}>내 드라이브</span>
+        <span onClick={() => goTo(0)} style={{ cursor: 'pointer', fontWeight: stack.length === 0 ? 700 : 500, color: stack.length === 0 ? 'var(--primary)' : 'var(--text-muted)' }}>{ctx ? (projects.find(p => p.id === ctx)?.name ?? '프로젝트') : '내 드라이브'}</span>
         {stack.map((f, i) => (
           <span key={f.id} style={{ display: 'flex', gap: 6 }}>
             <span>/</span>

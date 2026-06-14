@@ -37,9 +37,8 @@ export default function ProjectDetail() {
     ProjectAPI.get(id).then(setProject).finally(() => setLoading(false))
   }, [id])
 
-  const isLeader = project?.members.some(
-    m => m.user_id === user?.id && m.roles.includes('팀장')
-  ) ?? false
+  // 방장 = 프로젝트 소유자
+  const isLeader = !!project && !!user && project.owner_id === user.id
 
   const handleInvite = async () => {
     if (!id) return
@@ -188,7 +187,7 @@ export default function ProjectDetail() {
                 )}
               </div>
               {project.members.map((m, i) => {
-                const isLeaderMember = m.roles.includes('팀장')
+                const isLeaderMember = m.roles.includes('팀장') || m.roles.includes('방장')
                 return (
                   <div key={m.id} style={{ display: 'flex', alignItems: 'center', padding: '12px 20px', borderBottom: i < project.members.length - 1 ? '1px solid var(--border)' : 'none', gap: 14 }}>
                     <div style={{ width: 40, height: 40, borderRadius: '50%', background: MEMBER_COLORS[i % MEMBER_COLORS.length], display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700, fontSize: 15, flexShrink: 0 }}>
@@ -371,7 +370,7 @@ function ReportTab({ projectId }: { projectId: string }) {
   return (
     <div style={{ maxWidth: 640 }}>
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
-        <StatCard label="할 일 완료율" value={`${Math.round(report.completion_rate * 100)}%`} color="var(--primary)" />
+        <StatCard label="할 일 완료율" value={`${Math.round(report.completion_rate)}%`} color="var(--primary)" />
         <StatCard label="전체 할 일" value={`${report.done_todos}/${report.total_todos}`} color="var(--success)" />
         <StatCard label="회의 횟수" value={`${report.meeting_count}회`} color="var(--purple)" />
       </div>

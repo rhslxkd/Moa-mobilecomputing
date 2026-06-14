@@ -15,6 +15,7 @@ import ProfileEdit from './pages/ProfileEdit'
 import Friends from './pages/Friends'
 import Notifications from './pages/Notifications'
 import Drive from './pages/Drive'
+import RightPanel from './components/RightPanel'
 
 function AppLayout() {
   return (
@@ -23,6 +24,7 @@ function AppLayout() {
       <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}>
         <Outlet />
       </main>
+      <RightPanel />
     </div>
   )
 }

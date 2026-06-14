@@ -99,66 +99,6 @@ export default function Dashboard() {
           )}
         </div>
 
-        {/* Right panel */}
-        <div style={s.rightPanel}>
-          {/* Stats */}
-          <div style={s.panelCard}>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-              <StatItem value={activeCount} label="진행 프로젝트" />
-              <StatItem value={totalMembers} label="팀원" />
-              <StatItem value={openTodos} label="오픈 투두" />
-              <StatItem value={urgentTodos} label="마감 임박" red />
-            </div>
-          </div>
-
-          {/* Notifications */}
-          <div style={s.panelCard}>
-            <div style={s.panelHeader}>
-              <span style={s.panelTitle}>알림</span>
-              {unreadCount > 0 && (
-                <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600 }}>읽지 않은 {unreadCount}개</span>
-              )}
-            </div>
-            {notifications.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>알림이 없습니다</div>
-            ) : notifications.slice(0, 3).map(n => (
-              <div key={n.id} style={{ display: 'flex', gap: 10, padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ width: 8, height: 8, borderRadius: '50%', background: n.read ? 'var(--border)' : n.type === 'todo' ? 'var(--danger)' : 'var(--primary)', flexShrink: 0, marginTop: 4 }} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: 'var(--text)', marginBottom: 2 }}>{n.title}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)' }} className="truncate">{n.body}</div>
-                  <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>{n.time}</div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* My Todos */}
-          <div style={s.panelCard}>
-            <div style={s.panelHeader}>
-              <span style={s.panelTitle}>나의 투두</span>
-              <span style={{ fontSize: 12, color: 'var(--primary)', fontWeight: 600, cursor: 'pointer' }}
-                onClick={() => navigate('/todo')}>전체 보기 →</span>
-            </div>
-            {myTodos.length === 0 ? (
-              <div style={{ fontSize: 13, color: 'var(--text-muted)', textAlign: 'center', padding: '12px 0' }}>투두가 없습니다</div>
-            ) : myTodos.map(t => (
-              <div key={t.id} style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 0', borderBottom: '1px solid var(--border)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, minWidth: 0 }}>
-                  <div style={{ width: 18, height: 18, borderRadius: '50%', border: t.done ? 'none' : '2px solid var(--border)', background: t.done ? 'var(--primary)' : 'transparent', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                    {t.done && <svg width="10" height="10" viewBox="0 0 10 10"><path d="M2 5l2.5 2.5 3.5-4" stroke="#fff" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
-                  </div>
-                  <span style={{ fontSize: 13, color: t.done ? 'var(--text-muted)' : 'var(--text)', textDecoration: t.done ? 'line-through' : 'none' }} className="truncate">{t.title}</span>
-                </div>
-                {t.done ? (
-                  <span style={{ fontSize: 11, color: 'var(--primary)', fontWeight: 600, flexShrink: 0 }}>완료</span>
-                ) : t.due_date ? (
-                  <span style={{ fontSize: 11, color: daysLeftColor(t.due_date), fontWeight: 600, flexShrink: 0 }}>D-{daysLeft(t.due_date)}</span>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {showCreate && (

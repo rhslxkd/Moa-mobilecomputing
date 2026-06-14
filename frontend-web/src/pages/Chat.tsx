@@ -30,9 +30,12 @@ export default function Chat() {
     } catch (err: any) { alert(err.message) } finally { setSending(false) }
   }
 
-  // 내 메시지를 읽은 '다른 멤버' 수
-  const readByCount = (createdAt: string) =>
-    readStatus.filter(r => r.user_id !== myId && r.last_read_at && new Date(r.last_read_at) >= new Date(createdAt)).length
+  // 카카오식 안읽음 수: 내 메시지를 아직 안 읽은 '다른 멤버' 수 (0이면 표시 안 함)
+  const unreadByCount = (createdAt: string) => {
+    const others = Math.max(0, (activeRoom?.member_count ?? 1) - 1)
+    const readBy = readStatus.filter(r => r.user_id !== myId && r.last_read_at && new Date(r.last_read_at) >= new Date(createdAt)).length
+    return Math.max(0, others - readBy)
+  }
 
   const loadBoards = async (roomId: string) => {
     const [n, p] = await Promise.all([
@@ -223,7 +226,7 @@ export default function Chat() {
                       )}
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', fontSize: 10, color: 'var(--text-muted)', flexShrink: 0 }}>
-                      {isMe && readByCount(m.created_at) > 0 && <span style={{ color: 'var(--primary)', fontWeight: 700 }}>읽음 {readByCount(m.created_at)}</span>}
+                      {isMe && unreadByCount(m.created_at) > 0 && <span style={{ color: '#FFB300', fontWeight: 700 }}>{unreadByCount(m.created_at)}</span>}
                       <span>{new Date(m.created_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</span>
                     </div>
                   </div>

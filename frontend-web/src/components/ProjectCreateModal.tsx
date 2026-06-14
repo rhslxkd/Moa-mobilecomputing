@@ -24,7 +24,7 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
   const [status, setStatus] = useState<'active' | 'upcoming' | 'completed'>('active')
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
-  const [members, setMembers] = useState<MemberRow[]>([{ name: '', role: '팀장' }])
+  const [members, setMembers] = useState<MemberRow[]>([])
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   // 친구 검색
@@ -53,8 +53,8 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
     e.preventDefault()
     setError('')
     if (!name || !startDate || !endDate) { setError('모든 필드를 입력해주세요'); return }
+    // 본인(방장)은 서버에서 자동 추가됨 → 멤버 0명이어도 생성 가능
     const validMembers = members.filter(m => m.name.trim())
-    if (validMembers.length === 0) { setError('멤버를 최소 1명 입력해주세요'); return }
     setLoading(true)
     try {
       await ProjectAPI.create({
@@ -132,7 +132,7 @@ export default function ProjectCreateModal({ onClose, onCreated }: Props) {
           {/* Members */}
           <div style={s.field}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <label style={s.label}>팀원</label>
+              <label style={s.label}>팀원 <span style={{ fontWeight: 400, color: 'var(--text-muted)' }}>(본인은 방장으로 자동 추가돼요)</span></label>
               <button type="button" onClick={addMember} style={{ fontSize: 12, color: 'var(--primary)', background: 'none', border: 'none', cursor: 'pointer', fontWeight: 600 }}>+ 직접 입력</button>
             </div>
 
