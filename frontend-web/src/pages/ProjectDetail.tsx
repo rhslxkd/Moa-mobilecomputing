@@ -502,7 +502,7 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
               <span style={{ fontSize: 18, marginRight: 10 }}>📄</span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 14, fontWeight: 500 }} className="truncate">{f.name}</div>
-                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatSize(f.size)}</div>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{formatSize(f.size_bytes)}</div>
               </div>
               <button onClick={() => downloadFile(f.id, f.name)} style={{ ...s.addBtn, padding: '4px 10px', fontSize: 12, marginRight: 6 }}>다운로드</button>
               <button onClick={() => deleteFile(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
