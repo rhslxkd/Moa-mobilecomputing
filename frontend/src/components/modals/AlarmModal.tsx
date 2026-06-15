@@ -28,6 +28,7 @@ import {
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { NotificationAPI, InvitationAPI } from "@/services/api";
+import { useProject } from "@/contexts/ProjectContext";
 
 const PRESET_ROLES = ["팀장", "개발자", "디자이너", "기획자", "QA", "데이터 분석"];
 
@@ -56,6 +57,7 @@ interface AlarmModalProps {
 export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
   const C = useTheme();
   const router = useRouter();
+  const { loadProjects } = useProject();
   const [alarms, setAlarms] = useState<AlarmItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   // 역할 선택 모달
@@ -104,6 +106,7 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
     await InvitationAPI.accept(roleTarget.memberId, selectedRoles).catch(() => {});
     setRoleTarget(null);
     loadAlarms();
+    loadProjects();
     Alert.alert("수락 완료", `'${roleTarget.projectName}' 프로젝트 팀원이 됐어요!`);
   };
 
