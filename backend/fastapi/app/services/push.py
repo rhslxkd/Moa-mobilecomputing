@@ -64,12 +64,15 @@ def send_to_user(user_id: str, title: str, body: str) -> None:
             supabase_admin.table("push_tokens").select("token")
             .eq("user_id", user_id).execute()
         ).data
+        logger.info("FCM send_to_user: user=%s 토큰 %d개 발견", user_id, len(rows))
         if not rows:
-            logger.info("user %s 등록된 푸시 토큰 없음 — 미발송", user_id)
+            logger.warning("FCM 미발송: user=%s 에 등록된 push_token 없음", user_id)
             return
         for r in rows:
             if r.get("token"):
                 send_push(r["token"], title, body)
+            else:
+                logger.warning("FCM 미발송: token 값 비어있음 (user=%s)", user_id)
     except Exception as e:
         logger.warning("푸시 토큰 조회/발송 실패 (user=%s): %s", user_id, e)
 
