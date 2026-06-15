@@ -559,7 +559,7 @@ function MeetPollTab({ projectId }: { projectId: string }) {
               <tr key={h}>
                 <td style={{ padding: '2px 8px', color: 'var(--text-muted)', textAlign: 'right' }}>{h}:00</td>
                 {selected.dates.map(d => {
-                  const slot = `${d}T${String(h).padStart(2, '0')}:00`
+                  const slot = `${d} ${h}`  // 앱/백엔드와 동일한 슬롯 키 형식
                   const count = selected.counts[slot] ?? 0
                   const isSel = selectedSlots.includes(slot)
                   const isBest = selected.best_slots.includes(slot)
