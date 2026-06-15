@@ -16,6 +16,15 @@ from app.routers import meetpoll
 import logging
 from app.core.config import settings
 
+# moa.* 로거의 INFO 로그가 Railway(stdout)에 보이도록 핸들러 부착
+_moa_root = logging.getLogger("moa")
+if not _moa_root.handlers:
+    _h = logging.StreamHandler()
+    _h.setFormatter(logging.Formatter("%(levelname)s:%(name)s: %(message)s"))
+    _moa_root.addHandler(_h)
+    _moa_root.setLevel(logging.INFO)
+    _moa_root.propagate = False
+
 logger = logging.getLogger("moa.startup")
 
 
