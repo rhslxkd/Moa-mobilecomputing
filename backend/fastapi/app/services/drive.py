@@ -355,6 +355,12 @@ def rename_folder(folder_id: str, name: str, token: str) -> FolderResponse:
 
 # ── AI 자동 정리 ───────────────────────────────────────────
 
+def _norm_topic(name: str) -> str:
+    """폴더명/주제 정규화 — 공백·기호 제거 + 소문자화로 가벼운 오타·표기차 흡수."""
+    import re
+    return re.sub(r"[\s_\-()\[\].]+", "", (name or "").strip().lower())
+
+
 def auto_organize(project_id: str | None, folder_id: str | None, token: str) -> dict:
     """현재 위치의 파일들을 AI가 주제별로 묶어 폴더 생성 + 이동.
 
@@ -365,11 +371,19 @@ def auto_organize(project_id: str | None, folder_id: str | None, token: str) -> 
     # 현재 컨텍스트의 (하위폴더 없는) 파일 목록
     files = list_files(project_id, folder_id, token)
     targets = [{"id": f.id, "name": f.name} for f in files]
-    if len(targets) < 2:
+    if len(targets) < 1:
+        return {"moved": 0, "folders": 0, "message": "정리할 파일이 없어요."}
+
+    # 현재 위치에 이미 있는 폴더 — 매칭되는 파일은 기존 폴더로 이동
+    existing = list_folders(project_id, folder_id, token)
+    existing_by_norm = {_norm_topic(f.name): f for f in existing}
+    existing_names = [f.name for f in existing]
+
+    if len(targets) < 2 and not existing:
         return {"moved": 0, "folders": 0, "message": "정리할 파일이 충분하지 않아요."}
 
     try:
-        mapping = ai.categorize_files(targets)  # {file_id: 주제(폴더명) or ""}
+        mapping = ai.categorize_files(targets, existing_folders=existing_names)  # {file_id: 주제} or ""
     except Exception:
         raise HTTPException(status.HTTP_502_BAD_GATEWAY, detail="AI 분류에 실패했어요. 잠시 후 다시 시도해주세요.")
 
@@ -382,17 +396,26 @@ def auto_organize(project_id: str | None, folder_id: str | None, token: str) -> 
     moved = 0
     created = 0
     for topic, fids in groups.items():
-        if len(fids) < 2:   # 2개 이상만 폴더화
+        existing_folder = existing_by_norm.get(_norm_topic(topic))
+        if existing_folder:
+            # 기존 폴더로 이동 (파일이 1개여도 OK)
+            target = existing_folder
+        elif len(fids) >= 2:
+            # 새 주제 + 2개 이상 → 새 폴더 생성
+            target = create_folder(topic, project_id, folder_id, token)
+            created += 1
+        else:
+            # 기존 폴더에도 안 맞고 혼자뿐 → 루트 유지
             continue
-        new_folder = create_folder(topic, project_id, folder_id, token)
-        created += 1
         for fid in fids:
             try:
-                move_file(fid, new_folder.id, token)
+                move_file(fid, target.id, token)
                 moved += 1
             except Exception:
                 pass
 
-    if created == 0:
+    if moved == 0:
         return {"moved": 0, "folders": 0, "message": "묶을 만한 비슷한 파일이 없었어요."}
+    if created == 0:
+        return {"moved": moved, "folders": 0, "message": f"기존 폴더로 {moved}개 파일을 정리했어요."}
     return {"moved": moved, "folders": created, "message": f"{created}개 폴더로 {moved}개 파일을 정리했어요."}

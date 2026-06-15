@@ -92,18 +92,30 @@ def extract_action_items(transcript: str) -> list[dict]:
     return out[:10]
 
 
-def categorize_files(files: list[dict]) -> dict:
+def categorize_files(files: list[dict], existing_folders: list[str] | None = None) -> dict:
     """파일 목록 → {file_id: 폴더명}. 주제/종류별로 묶는다.
 
     files = [{"id": str, "name": str}, ...]
+    existing_folders = 현재 위치에 이미 있는 폴더 이름들 (있으면 거기로 우선 분류)
     """
     if not files:
         return {}
+    existing_folders = existing_folders or []
+    folder_hint = (
+        f"이미 존재하는 폴더: {existing_folders}. "
+        "파일 주제가 기존 폴더와 같으면 **반드시 그 기존 폴더 이름을 똑같이 그대로** 'folder'에 써(새로 만들지 말고). "
+        "기존 폴더에 들어갈 파일은 혼자뿐이어도 그 폴더로 보내. "
+        if existing_folders else ""
+    )
     sys = (
         "어질러진 파일 드라이브를 정리해줘. 파일 이름을 보고 **같은 주제의 파일끼리 묶어라**. "
         "'발표자료1', '발표자료2', '발표자료_최종', '발표자료(진짜최종)'처럼 버전 번호·'최종'·날짜·복사본 표시는 "
         "**무시하고 핵심 주제(예: '발표자료')로 같은 그룹**으로 묶어. "
-        "폴더명은 그 핵심 주제로 간결하게(한국어). 주제가 애매하거나 혼자뿐인 파일은 'folder'를 빈 문자열로 둬(폴더 안 만듦). "
+        "**오타·띄어쓰기·영한 혼용도 같은 주제로 인식해라** "
+        "(예: '발표자료'/'발표 자료'/'발표자룔'/'발표자豆'/'presentation'은 모두 같은 '발표자료' 주제). "
+        + folder_hint +
+        "폴더명은 그 핵심 주제로 간결하게(한국어, 오타 없이 올바른 표기로). "
+        "주제가 애매하거나 혼자뿐이고 기존 폴더에도 안 맞는 파일은 'folder'를 빈 문자열로 둬(폴더 안 만듦). "
         "반드시 아래 JSON만 출력:\n"
         '{"assignments": [{"id": "파일id", "folder": "핵심주제 또는 빈문자열"}]}'
     )
