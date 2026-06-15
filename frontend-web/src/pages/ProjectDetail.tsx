@@ -220,18 +220,68 @@ export default function ProjectDetail() {
 function TodoTab({ projectId, members }: { projectId: string; members: { id: string; name: string }[] }) {
   const [todos, setTodos] = useState<TodoDTO[]>([])
   const [loading, setLoading] = useState(true)
-  const [newTitle, setNewTitle] = useState('')
-  const [adding, setAdding] = useState(false)
   const [filter, setFilter] = useState<'all' | 'done' | 'undone'>('all')
+
+  // 추가 폼 상태
+  const [showForm, setShowForm] = useState(false)
+  const [newTitle, setNewTitle] = useState('')
+  const [newStartDate, setNewStartDate] = useState('')
+  const [newDueDate, setNewDueDate] = useState('')
+  const [newAssignees, setNewAssignees] = useState<string[]>([])
+  const [newDifficulty, setNewDifficulty] = useState(2)
+  const [adding, setAdding] = useState(false)
+
+  // 수정 모달 상태
+  const [editTodo, setEditTodo] = useState<TodoDTO | null>(null)
+  const [editTitle, setEditTitle] = useState('')
+  const [editStartDate, setEditStartDate] = useState('')
+  const [editDueDate, setEditDueDate] = useState('')
+  const [editAssignees, setEditAssignees] = useState<string[]>([])
+  const [editDifficulty, setEditDifficulty] = useState(2)
 
   const load = () => TodoAPI.listByProject(projectId).then(setTodos).finally(() => setLoading(false))
   useEffect(() => { load() }, [projectId])
 
+  const resetForm = () => {
+    setNewTitle(''); setNewStartDate(''); setNewDueDate('')
+    setNewAssignees([]); setNewDifficulty(2); setShowForm(false)
+  }
+
   const addTodo = async () => {
     if (!newTitle.trim()) return
     setAdding(true)
-    try { await TodoAPI.create({ title: newTitle, project_id: projectId }); setNewTitle(''); load() }
-    finally { setAdding(false) }
+    try {
+      await TodoAPI.create({
+        title: newTitle.trim(),
+        project_id: projectId,
+        assignee_member_ids: newAssignees,
+        start_date: newStartDate || undefined,
+        due_date: newDueDate || undefined,
+        difficulty: newDifficulty,
+      })
+      resetForm(); load()
+    } finally { setAdding(false) }
+  }
+
+  const openEdit = (todo: TodoDTO) => {
+    setEditTodo(todo)
+    setEditTitle(todo.title)
+    setEditStartDate(todo.start_date ?? '')
+    setEditDueDate(todo.due_date ?? '')
+    setEditAssignees(todo.assignee_member_ids ?? [])
+    setEditDifficulty(todo.difficulty ?? 2)
+  }
+
+  const saveEdit = async () => {
+    if (!editTodo || !editTitle.trim()) return
+    await TodoAPI.update(editTodo.id, {
+      title: editTitle.trim(),
+      assignee_member_ids: editAssignees,
+      start_date: editStartDate || undefined,
+      due_date: editDueDate || undefined,
+      difficulty: editDifficulty,
+    })
+    setEditTodo(null); load()
   }
 
   const toggle = async (id: string) => {
@@ -244,6 +294,10 @@ function TodoTab({ projectId, members }: { projectId: string; members: { id: str
     setTodos(prev => prev.filter(t => t.id !== id))
   }
 
+  const toggleAssignee = (id: string, list: string[], setList: (v: string[]) => void) => {
+    setList(list.includes(id) ? list.filter(x => x !== id) : [...list, id])
+  }
+
   const filtered = todos.filter(t => filter === 'all' ? true : filter === 'done' ? t.done : !t.done)
   const done = todos.filter(t => t.done).length
 
@@ -251,6 +305,7 @@ function TodoTab({ projectId, members }: { projectId: string; members: { id: str
 
   return (
     <div style={{ maxWidth: 640 }}>
+      {/* 진행률 */}
       <div style={{ marginBottom: 20 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-sub)', marginBottom: 6 }}>
           <span>진행률</span><span>{done}/{todos.length}</span>
@@ -259,11 +314,76 @@ function TodoTab({ projectId, members }: { projectId: string; members: { id: str
           <div style={{ height: '100%', background: 'var(--primary)', borderRadius: 4, width: todos.length ? `${(done / todos.length) * 100}%` : '0%', transition: 'width 0.3s' }} />
         </div>
       </div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
-        <input style={{ ...s.input, flex: 1 }} value={newTitle} onChange={e => setNewTitle(e.target.value)}
-          placeholder="새 할 일 추가..." onKeyDown={e => e.key === 'Enter' && addTodo()} />
-        <button style={{ ...s.addBtn, opacity: adding ? 0.7 : 1 }} onClick={addTodo} disabled={adding}>추가</button>
-      </div>
+
+      {/* 추가 폼 토글 버튼 */}
+      {!showForm ? (
+        <button onClick={() => setShowForm(true)} style={{ ...s.addBtn, width: '100%', marginBottom: 16, padding: '10px 0' }}>+ 새 할 일 추가</button>
+      ) : (
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+          <input
+            style={{ ...s.input, width: '100%', marginBottom: 10, boxSizing: 'border-box' }}
+            value={newTitle} onChange={e => setNewTitle(e.target.value)}
+            placeholder="할 일 제목" autoFocus
+          />
+          <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>시작일</div>
+              <input type="date" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }}
+                value={newStartDate} onChange={e => setNewStartDate(e.target.value)} />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>마감일</div>
+              <input type="date" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }}
+                value={newDueDate} onChange={e => setNewDueDate(e.target.value)} />
+            </div>
+          </div>
+          {members.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>담당자 (중복 선택 가능)</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {members.map(m => {
+                  const active = newAssignees.includes(m.id)
+                  return (
+                    <button key={m.id} onClick={() => toggleAssignee(m.id, newAssignees, setNewAssignees)}
+                      style={{ padding: '4px 12px', borderRadius: 16, border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                      {m.name}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          )}
+          <div style={{ marginBottom: 12 }}>
+            <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>난이도</div>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {([1, 2, 3] as const).map(d => {
+                const labels = { 1: '하', 2: '중', 3: '상' }
+                const colors = { 1: '#16A34A', 2: '#D97706', 3: '#DC2626' }
+                const bgs = { 1: '#F0FDF4', 2: '#FFFBEB', 3: '#FEF2F2' }
+                const active = newDifficulty === d
+                return (
+                  <button key={d} onClick={() => setNewDifficulty(d)}
+                    style={{ padding: '4px 14px', borderRadius: 10, border: `1px solid ${active ? colors[d] : 'var(--border)'}`, background: active ? bgs[d] : 'transparent', color: active ? colors[d] : 'var(--text-muted)', fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer' }}>
+                    {labels[d]}
+                  </button>
+                )
+              })}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={addTodo} disabled={adding || !newTitle.trim()}
+              style={{ ...s.addBtn, flex: 1, opacity: adding || !newTitle.trim() ? 0.5 : 1 }}>
+              {adding ? '추가 중...' : '추가'}
+            </button>
+            <button onClick={resetForm}
+              style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+              취소
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 필터 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
         {(['all', 'undone', 'done'] as const).map(f => (
           <button key={f} style={{ ...s.chip, background: filter === f ? 'var(--primary-bg)' : 'var(--bg-muted)', color: filter === f ? 'var(--primary)' : 'var(--text-sub)', fontWeight: filter === f ? 700 : 500 }}
@@ -272,21 +392,96 @@ function TodoTab({ projectId, members }: { projectId: string; members: { id: str
           </button>
         ))}
       </div>
+
+      {/* 할 일 목록 */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
         {filtered.map(todo => (
-          <div key={todo.id} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)' }}>
-            <input type="checkbox" checked={todo.done} onChange={() => toggle(todo.id)} style={{ width: 18, height: 18, accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }} />
+          <div key={todo.id} onClick={() => openEdit(todo)}
+            style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', background: 'var(--bg-card)', borderRadius: 12, border: '1px solid var(--border)', cursor: 'pointer' }}>
+            <input type="checkbox" checked={todo.done} onChange={e => { e.stopPropagation(); toggle(todo.id) }}
+              style={{ width: 18, height: 18, accentColor: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }} onClick={e => e.stopPropagation()} />
             <div style={{ flex: 1, minWidth: 0 }}>
               <div style={{ fontSize: 14, color: todo.done ? 'var(--text-muted)' : 'var(--text)', textDecoration: todo.done ? 'line-through' : 'none' }} className="truncate">{todo.title}</div>
-              {todo.assignee_name && <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>담당: {todo.assignee_name}</div>}
+              {todo.assignee_names && todo.assignee_names.length > 0 && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2 }}>담당: {todo.assignee_names.join(', ')}</div>
+              )}
+              {(todo.start_date || todo.due_date) && (
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 1 }}>
+                  {todo.start_date ? todo.start_date.slice(0, 10) : ''}{todo.start_date && todo.due_date ? ' ~ ' : ''}{todo.due_date ? todo.due_date.slice(0, 10) : ''}
+                </div>
+              )}
             </div>
-            {todo.due_date && <div style={{ fontSize: 11, color: 'var(--text-muted)', flexShrink: 0 }}>~{todo.due_date.slice(0, 10)}</div>}
             <DiffBadge diff={todo.difficulty} />
-            <button onClick={() => del(todo.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, padding: '0 2px', flexShrink: 0 }}>×</button>
+            <button onClick={e => { e.stopPropagation(); del(todo.id) }}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 16, padding: '0 2px', flexShrink: 0 }}>×</button>
           </div>
         ))}
         {filtered.length === 0 && <div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 32 }}>할 일이 없습니다</div>}
       </div>
+
+      {/* 수정 모달 */}
+      {editTodo && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
+          onClick={() => setEditTodo(null)}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 440, boxShadow: '0 8px 32px rgba(0,0,0,0.18)' }}
+            onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>할 일 수정</div>
+            <input style={{ ...s.input, width: '100%', marginBottom: 12, boxSizing: 'border-box' }}
+              value={editTitle} onChange={e => setEditTitle(e.target.value)} placeholder="제목" autoFocus />
+            <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>시작일</div>
+                <input type="date" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }}
+                  value={editStartDate} onChange={e => setEditStartDate(e.target.value)} />
+              </div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 4 }}>마감일</div>
+                <input type="date" style={{ ...s.input, width: '100%', boxSizing: 'border-box' }}
+                  value={editDueDate} onChange={e => setEditDueDate(e.target.value)} />
+              </div>
+            </div>
+            {members.length > 0 && (
+              <div style={{ marginBottom: 12 }}>
+                <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>담당자 (중복 선택 가능)</div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {members.map(m => {
+                    const active = editAssignees.includes(m.id)
+                    return (
+                      <button key={m.id} onClick={() => toggleAssignee(m.id, editAssignees, setEditAssignees)}
+                        style={{ padding: '4px 12px', borderRadius: 16, border: `1px solid ${active ? 'var(--primary)' : 'var(--border)'}`, background: active ? 'var(--primary)' : 'transparent', color: active ? '#fff' : 'var(--text)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>
+                        {m.name}
+                      </button>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6 }}>난이도</div>
+              <div style={{ display: 'flex', gap: 6 }}>
+                {([1, 2, 3] as const).map(d => {
+                  const labels = { 1: '하', 2: '중', 3: '상' }
+                  const colors = { 1: '#16A34A', 2: '#D97706', 3: '#DC2626' }
+                  const bgs = { 1: '#F0FDF4', 2: '#FFFBEB', 3: '#FEF2F2' }
+                  const active = editDifficulty === d
+                  return (
+                    <button key={d} onClick={() => setEditDifficulty(d)}
+                      style={{ padding: '4px 14px', borderRadius: 10, border: `1px solid ${active ? colors[d] : 'var(--border)'}`, background: active ? bgs[d] : 'transparent', color: active ? colors[d] : 'var(--text-muted)', fontSize: 12, fontWeight: active ? 700 : 500, cursor: 'pointer' }}>
+                      {labels[d]}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={saveEdit} disabled={!editTitle.trim()}
+                style={{ ...s.addBtn, flex: 1, opacity: !editTitle.trim() ? 0.5 : 1 }}>저장</button>
+              <button onClick={() => setEditTodo(null)}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>취소</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

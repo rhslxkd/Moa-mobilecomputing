@@ -93,8 +93,8 @@ export interface MemberDTO { id: string; user_id: string | null; name: string; r
 export interface TodoDTO {
   id: string; title: string; description: string | null;
   project_id: string | null; project_name: string | null;
-  assignee_member_id: string | null; assignee_name: string | null;
-  assignee_roles: string[]; done: boolean; due_date: string | null;
+  assignee_member_ids: string[]; assignee_names: string[];
+  done: boolean; due_date: string | null;
   start_date: string | null; difficulty: number;
 }
 
