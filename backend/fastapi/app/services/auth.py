@@ -216,6 +216,20 @@ def login(req: LoginRequest) -> TokenResponse:
     )
 
 
+def refresh(refresh_token: str) -> TokenResponse:
+    try:
+        auth_response = supabase.auth.refresh_session(refresh_token)
+    except AuthApiError:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="갱신 토큰이 유효하지 않습니다.")
+    session = auth_response.session
+    if not session:
+        raise HTTPException(status.HTTP_401_UNAUTHORIZED, detail="갱신 토큰이 유효하지 않습니다.")
+    return TokenResponse(
+        access_token=session.access_token,
+        refresh_token=session.refresh_token,
+    )
+
+
 # ── 이름 설정 ──────────────────────────────────────────────
 
 def setup_name(req: SetupNameRequest, token: str) -> None:

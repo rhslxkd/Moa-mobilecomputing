@@ -49,6 +49,10 @@ class LoginRequest(BaseModel):
     password: str
 
 
+class RefreshRequest(BaseModel):
+    refresh_token: str
+
+
 # ── 이름 설정 ──────────────────────────────────────────────
 class SetupNameRequest(BaseModel):
     last_name: str

@@ -19,6 +19,7 @@ export default function Login() {
     try {
       const res = await AuthAPI.login({ username, password })
       TokenStore.set(res.access_token)
+      if (res.refresh_token) TokenStore.setRefresh(res.refresh_token)
       await fetchUser()
       navigate('/dashboard')
     } catch (err: any) {

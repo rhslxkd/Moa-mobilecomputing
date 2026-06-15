@@ -3,12 +3,35 @@
 export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const TOKEN_KEY = "moa_access_token";
+const REFRESH_KEY = "moa_refresh_token";
 
 export const TokenStore = {
   get: () => localStorage.getItem(TOKEN_KEY),
   set: (token: string) => localStorage.setItem(TOKEN_KEY, token),
-  clear: () => localStorage.removeItem(TOKEN_KEY),
+  getRefresh: () => localStorage.getItem(REFRESH_KEY),
+  setRefresh: (token: string) => localStorage.setItem(REFRESH_KEY, token),
+  clear: () => { localStorage.removeItem(TOKEN_KEY); localStorage.removeItem(REFRESH_KEY); },
 };
+
+async function tryRefreshToken(): Promise<string | null> {
+  const refreshToken = TokenStore.getRefresh();
+  if (!refreshToken) return null;
+  try {
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.access_token) {
+      TokenStore.set(data.access_token);
+      if (data.refresh_token) TokenStore.setRefresh(data.refresh_token);
+      return data.access_token;
+    }
+  } catch {}
+  return null;
+}
 
 async function request<T>(path: string, options: RequestInit = {}, overrideToken?: string): Promise<T> {
   const authToken = overrideToken ?? TokenStore.get();
@@ -18,6 +41,24 @@ async function request<T>(path: string, options: RequestInit = {}, overrideToken
   };
   if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+  // 토큰 만료 시 자동 갱신 후 재시도
+  if (res.status === 401 && !overrideToken) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      const retryHeaders = { ...headers, Authorization: `Bearer ${newToken}` };
+      const retryRes = await fetch(`${BASE_URL}${path}`, { ...options, headers: retryHeaders });
+      const retryData = await retryRes.json().catch(() => ({}));
+      if (!retryRes.ok) {
+        const detail = retryData?.detail;
+        throw new Error(typeof detail === "string" ? detail : "서버 오류가 발생했습니다.");
+      }
+      return retryData as T;
+    }
+    // 갱신 실패 시 로그아웃
+    TokenStore.clear();
+    window.location.href = "/login";
+    throw new Error("세션이 만료되었습니다. 다시 로그인해주세요.");
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const detail = data?.detail;

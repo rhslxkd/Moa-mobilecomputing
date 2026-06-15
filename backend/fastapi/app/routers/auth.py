@@ -5,6 +5,7 @@ from app.schemas.auth import (
     SignUpRequest,
     VerifyEmailRequest,
     LoginRequest,
+    RefreshRequest,
     SetupNameRequest,
     SetupAffiliationRequest,
     FindIdRequest,
@@ -55,6 +56,12 @@ def verify_signup_email(req: VerifyEmailRequest):
 def login(req: LoginRequest):
     """아이디 + 비밀번호로 로그인."""
     return auth_service.login(req)
+
+
+@router.post("/refresh", response_model=TokenResponse)
+def refresh_token(req: RefreshRequest):
+    """refresh_token으로 새 access_token 발급."""
+    return auth_service.refresh(req.refresh_token)
 
 
 # ── 온보딩: 이름 설정 ──────────────────────────────────────
