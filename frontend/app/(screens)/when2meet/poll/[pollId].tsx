@@ -159,10 +159,10 @@ export default function When2MeetGridScreen() {
                         alignItems: "center", justifyContent: "center",
                       }}
                     >
-                      {isMine ? (
+                      {isMine && dirty ? (
                         <Text style={{ fontSize: 13, fontWeight: "900", color: "#fff" }}>✓</Text>
                       ) : count > 0 ? (
-                        <Text style={{ fontSize: 11, fontWeight: "700", color: count / Math.max(1, total) > 0.5 ? "#fff" : C.textSub }}>{count}</Text>
+                        <Text style={{ fontSize: 11, fontWeight: "700", color: (isMine || count / Math.max(1, total) > 0.5) ? "#fff" : C.textSub }}>{count}</Text>
                       ) : null}
                     </TouchableOpacity>
                   );
