@@ -38,6 +38,28 @@ def _has_project_access(project_id: str, user_id: str) -> bool:
     return False
 
 
+def get_my_scores(token: str) -> dict[str, int]:
+    """현재 유저가 멤버로 속한 프로젝트별 저장된 기여도 점수.
+
+    {project_id: score} — AI를 돌리지 않고 DB에 저장된 값만 읽음(빠름).
+    아직 리포트를 한 번도 안 연 프로젝트는 점수가 없어 제외됨.
+    """
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("project_members")
+        .select("project_id, contribution_score")
+        .eq("user_id", user.id)
+        .eq("status", "accepted")
+        .execute()
+    ).data
+    out: dict[str, int] = {}
+    for r in rows:
+        score = r.get("contribution_score")
+        if r.get("project_id") and score is not None:
+            out[r["project_id"]] = int(score)
+    return out
+
+
 def get_report(project_id: str, token: str) -> ReportResponse:
     user = _get_user(token)
 
@@ -192,6 +214,17 @@ def get_report(project_id: str, token: str) -> ReportResponse:
         except Exception as e:
             logger.warning("리포트 AI 코멘트/점수 생성 실패: %s", e)
             overall_comment = None
+
+    # 계산된 점수를 DB에 저장 — 프로필 '팀 컨디션' 배지에서 AI 없이 빠르게 읽음
+    from datetime import datetime, timezone
+    now_iso = datetime.now(timezone.utc).isoformat()
+    for r in member_reports:
+        try:
+            supabase_admin.table("project_members").update(
+                {"contribution_score": int(r.score), "score_updated_at": now_iso}
+            ).eq("id", r.member_id).execute()
+        except Exception as e:
+            logger.warning("기여도 점수 저장 실패 (member=%s): %s", r.member_id, e)
 
     # 점수 내림차순 정렬 (1등이 맨 앞)
     member_reports.sort(key=lambda x: x.score, reverse=True)

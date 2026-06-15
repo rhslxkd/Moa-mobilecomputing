@@ -55,25 +55,19 @@ export default function MoreScreen() {
   const { user } = useAuth();
   const { projects, loading } = useProject();
 
-  // 프로젝트별 "내 기여도 점수" (리포트에서 추출). null = 로딩중/없음
-  const [myScores, setMyScores] = useState<Record<string, number | null>>({});
+  // 저장된 프로젝트별 내 기여도 점수 (DB에서 한 번에 조회, AI 없음)
+  const [myScores, setMyScores] = useState<Record<string, number>>({});
+  const [scoresLoaded, setScoresLoaded] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      projects.forEach((proj) => {
-        ReportAPI.get(proj.id)
-          .then((rep) => {
-            if (cancelled) return;
-            const mine = rep.members.find((m) => m.user_id && m.user_id === user?.id);
-            setMyScores((prev) => ({ ...prev, [proj.id]: mine ? mine.score : 0 }));
-          })
-          .catch(() => {
-            if (!cancelled) setMyScores((prev) => ({ ...prev, [proj.id]: null }));
-          });
-      });
+      ReportAPI.myScores()
+        .then((scores) => { if (!cancelled) setMyScores(scores || {}); })
+        .catch(() => {})
+        .finally(() => { if (!cancelled) setScoresLoaded(true); });
       return () => { cancelled = true; };
-    }, [projects, user?.id])
+    }, [])
   );
 
   const displayName = user?.fullName || user?.username || "-";
@@ -183,8 +177,9 @@ export default function MoreScreen() {
             </View>
           ) : projects.map((proj, idx) => {
             const score = myScores[proj.id];
-            const scoreLoading = score === undefined;
-            const health = getProjectHealth(score ?? 0);
+            const scoreLoading = !scoresLoaded;
+            const analyzed = score !== undefined;
+            const health = analyzed ? getProjectHealth(score) : null;
             return (
               <View
                 key={proj.id}
@@ -200,14 +195,22 @@ export default function MoreScreen() {
                 <View style={s.healthInfo}>
                   <Text style={[s.healthName, { color: C.text }]} numberOfLines={1}>{proj.name}</Text>
                   <Text style={[s.healthDesc, { color: C.textMuted }]}>
-                    {scoreLoading ? "기여도 분석 중…" : health.desc}
+                    {scoreLoading
+                      ? "불러오는 중…"
+                      : analyzed
+                        ? health!.desc
+                        : "기여도 리포트를 열면 분석돼요"}
                   </Text>
                 </View>
                 {scoreLoading ? (
                   <ActivityIndicator size="small" color={C.textMuted} />
+                ) : analyzed ? (
+                  <View style={[s.healthBadge, { backgroundColor: health!.bg, borderColor: health!.border }]}>
+                    <Text style={[s.healthBadgeText, { color: health!.color }]}>{health!.label}</Text>
+                  </View>
                 ) : (
-                  <View style={[s.healthBadge, { backgroundColor: health.bg, borderColor: health.border }]}>
-                    <Text style={[s.healthBadgeText, { color: health.color }]}>{health.label}</Text>
+                  <View style={[s.healthBadge, { backgroundColor: C.bgMuted, borderColor: C.border }]}>
+                    <Text style={[s.healthBadgeText, { color: C.textMuted }]}>분석 전</Text>
                   </View>
                 )}
               </View>

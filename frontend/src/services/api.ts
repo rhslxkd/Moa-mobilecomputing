@@ -514,6 +514,10 @@ export interface ReportDTO {
 export const ReportAPI = {
   get: (projectId: string) =>
     request<ReportDTO>(`/reports/${projectId}`, { method: "GET" }),
+
+  /** 저장된 프로젝트별 내 기여도 점수 (AI 없이 빠름). { [projectId]: score } */
+  myScores: () =>
+    request<Record<string, number>>(`/reports/my-scores`, { method: "GET" }),
 };
 
 // ── Notification API ───────────────────────────────────────
