@@ -1,4 +1,6 @@
-export const BASE_URL = "/api";
+// 개발: 빈 값 → "/api" (vite dev proxy 사용)
+// 배포: VITE_API_BASE_URL 에 백엔드 절대주소 지정 (예: https://...railway.app)
+export const BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const TOKEN_KEY = "moa_access_token";
 
