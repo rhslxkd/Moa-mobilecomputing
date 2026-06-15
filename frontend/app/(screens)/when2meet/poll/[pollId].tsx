@@ -153,15 +153,17 @@ export default function When2MeetGridScreen() {
                       onPress={() => toggle(key)}
                       style={{
                         width: COL_W - 4, height: ROW_H - 4, margin: 2, borderRadius: 6,
-                        backgroundColor: cellColor(count),
-                        borderWidth: isMine ? 2 : StyleSheet.hairlineWidth,
+                        backgroundColor: isMine ? PRIMARY : cellColor(count),
+                        borderWidth: StyleSheet.hairlineWidth,
                         borderColor: isMine ? PRIMARY : C.border,
                         alignItems: "center", justifyContent: "center",
                       }}
                     >
-                      {count > 0 && (
+                      {isMine ? (
+                        <Text style={{ fontSize: 13, fontWeight: "900", color: "#fff" }}>✓</Text>
+                      ) : count > 0 ? (
                         <Text style={{ fontSize: 11, fontWeight: "700", color: count / Math.max(1, total) > 0.5 ? "#fff" : C.textSub }}>{count}</Text>
-                      )}
+                      ) : null}
                     </TouchableOpacity>
                   );
                 })}
