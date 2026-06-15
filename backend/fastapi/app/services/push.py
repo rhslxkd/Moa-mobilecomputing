@@ -42,7 +42,15 @@ def send_push(token: str, title: str, body: str) -> None:
         message = messaging.Message(
             notification=messaging.Notification(title=title, body=body),
             token=token,
-            android=messaging.AndroidConfig(priority="high"),
+            android=messaging.AndroidConfig(
+                priority="high",
+                notification=messaging.AndroidNotification(
+                    channel_id="default",
+                    priority="max",
+                    default_vibrate_timings=True,
+                    default_sound=True,
+                ),
+            ),
         )
         msg_id = messaging.send(message)
         logger.info("FCM 전송 성공 (title=%s, id=%s)", title, msg_id)
