@@ -172,7 +172,7 @@ def send_request(req: FriendRequestBody, token: str) -> FriendRequestResponse:
         from app.services import push
         me = _profiles_map([user.id]).get(user.id, {})
         sender_name = _display_name(me) if me else "누군가"
-        push.send_to_user(target, "친구 요청", f"{sender_name}님이 친구 요청을 보냈어요.")
+        push.notify_user(target, "친구 요청", f"{sender_name}님이 친구 요청을 보냈어요.")
     except Exception:
         pass
 
@@ -202,6 +202,15 @@ def accept_request(friendship_id: str, token: str) -> None:
     if not rows:
         raise HTTPException(status.HTTP_404_NOT_FOUND, detail="친구 요청을 찾을 수 없습니다.")
     supabase_admin.table("friendships").update({"status": "accepted"}).eq("id", friendship_id).execute()
+
+    # 요청 보낸 사람에게 수락 푸시
+    try:
+        from app.services import push
+        me = _profiles_map([user.id]).get(user.id, {})
+        my_name = _display_name(me) if me else "상대방"
+        push.notify_user(rows[0]["requester_id"], "친구 수락", f"{my_name}님과 친구가 됐어요.")
+    except Exception:
+        pass
 
 
 # ── 삭제 / 거절 ────────────────────────────────────────────

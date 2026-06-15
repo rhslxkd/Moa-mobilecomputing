@@ -1,5 +1,6 @@
 import json
 import logging
+import threading
 import firebase_admin
 from firebase_admin import credentials, messaging
 from app.core.config import settings
@@ -71,3 +72,22 @@ def send_to_user(user_id: str, title: str, body: str) -> None:
                 send_push(r["token"], title, body)
     except Exception as e:
         logger.warning("푸시 토큰 조회/발송 실패 (user=%s): %s", user_id, e)
+
+
+def notify_users(user_ids: list[str], title: str, body: str, exclude: str | None = None) -> None:
+    """여러 유저에게 비동기(백그라운드)로 푸시 전송. 본인(exclude)은 제외. 응답을 막지 않음."""
+    targets = [u for u in set(user_ids) if u and u != exclude]
+    if not targets:
+        return
+
+    def _run():
+        for uid in targets:
+            send_to_user(uid, title, body)
+
+    threading.Thread(target=_run, daemon=True).start()
+
+
+def notify_user(user_id: str | None, title: str, body: str) -> None:
+    """단일 유저에게 비동기 푸시 전송."""
+    if user_id:
+        notify_users([user_id], title, body)

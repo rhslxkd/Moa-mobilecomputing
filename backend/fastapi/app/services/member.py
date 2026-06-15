@@ -74,6 +74,15 @@ def add_member(project_id: str, req: MemberCreate, token: str) -> MemberResponse
     row = (
         supabase_admin.table("project_members").insert(payload).execute()
     ).data[0]
+    # 초대받은 사람에게 푸시
+    if payload.get("status") == "pending" and payload.get("user_id"):
+        proj = (
+            supabase_admin.table("projects").select("name")
+            .eq("id", project_id).limit(1).execute()
+        ).data
+        pname = proj[0]["name"] if proj else "프로젝트"
+        from app.services import push
+        push.notify_user(payload["user_id"], "프로젝트 초대", f"'{pname}'에 초대됐어요")
     return _build(row)
 
 

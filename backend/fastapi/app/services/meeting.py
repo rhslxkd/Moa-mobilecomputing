@@ -146,6 +146,25 @@ def _get_proj_name(project_id: str | None) -> str | None:
     return rows[0]["name"] if rows else None
 
 
+def _project_member_user_ids(project_id: str | None) -> list[str]:
+    """프로젝트 owner + accepted 멤버의 user_id 목록 (푸시 수신자용)."""
+    if not project_id:
+        return []
+    ids: list[str] = []
+    proj = (
+        supabase_admin.table("projects").select("owner_id")
+        .eq("id", project_id).limit(1).execute()
+    ).data
+    if proj and proj[0].get("owner_id"):
+        ids.append(proj[0]["owner_id"])
+    mems = (
+        supabase_admin.table("project_members").select("user_id")
+        .eq("project_id", project_id).eq("status", "accepted").execute()
+    ).data
+    ids += [m["user_id"] for m in mems if m.get("user_id")]
+    return ids
+
+
 def _has_project_access(project_id: str, user_id: str) -> bool:
     """owner이거나 수락된 멤버면 프로젝트 회의 접근 가능."""
     if not project_id:
@@ -317,6 +336,20 @@ def process_audio(meeting_id: str, audio_bytes: bytes, filename: str, token: str
 
     # 화자 자동 매칭 (각자 발언 시 이름을 말한다는 전제) → 참여자 자동 생성
     _auto_map_speakers(meeting_id, speaker_stats, speaker_samples, transcript)
+
+    # 회의록 생성 완료 → 프로젝트 멤버에게 푸시
+    try:
+        m = (
+            supabase_admin.table("meetings").select("project_id")
+            .eq("id", meeting_id).limit(1).execute()
+        ).data
+        pid = m[0].get("project_id") if m else None
+        if pid:
+            from app.services import push
+            push.notify_users(_project_member_user_ids(pid), "회의록 생성",
+                              f"'{_get_proj_name(pid) or '프로젝트'}' 회의록이 나왔어요")
+    except Exception as e:
+        logger.warning("회의록 푸시 실패: %s", e)
 
     return get_meeting(meeting_id, token)
 

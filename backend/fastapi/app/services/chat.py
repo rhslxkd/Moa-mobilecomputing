@@ -353,7 +353,10 @@ def send_message(room_id: str, content: str, token: str) -> MessageResponse:
         .execute()
     ).data[0]
     pmap = _profiles_map([user.id])
-    return _build_message(row, _display_name(pmap.get(user.id, {})))
+    sender = _display_name(pmap.get(user.id, {}))
+    from app.services import push
+    push.notify_users(_member_ids(room_id), sender, content[:60], exclude=user.id)
+    return _build_message(row, sender)
 
 
 def send_file_message(
@@ -384,7 +387,10 @@ def send_file_message(
         .execute()
     ).data[0]
     pmap = _profiles_map([user.id])
-    return _build_message(row, _display_name(pmap.get(user.id, {})))
+    sender = _display_name(pmap.get(user.id, {}))
+    from app.services import push
+    push.notify_users(_member_ids(room_id), sender, "파일을 보냈어요", exclude=user.id)
+    return _build_message(row, sender)
 
 
 # ── 공지 ───────────────────────────────────────────────────
@@ -422,6 +428,8 @@ def create_notice(room_id: str, content: str, token: str) -> NoticeResponse:
         .insert({"room_id": room_id, "content": content, "created_by": user.id})
         .execute()
     ).data[0]
+    from app.services import push
+    push.notify_users(_member_ids(room_id), "새 공지", content[:60], exclude=user.id)
     return NoticeResponse(
         id=row["id"], room_id=row["room_id"], content=row["content"],
         author_name=_author_name(user.id), created_at=row["created_at"],
@@ -510,6 +518,8 @@ def create_poll(room_id: str, question: str, options: list[str], token: str) -> 
         .insert({"room_id": room_id, "question": question, "options": opts, "created_by": user.id})
         .execute()
     ).data[0]
+    from app.services import push
+    push.notify_users(_member_ids(room_id), "새 투표", question[:60], exclude=user.id)
     return _build_poll(row, user.id)
 
 

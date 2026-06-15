@@ -32,6 +32,23 @@ def _has_project_access(project_id: str, user_id: str) -> bool:
     return False
 
 
+def _project_member_user_ids(project_id: str) -> list[str]:
+    """프로젝트 owner + accepted 멤버의 user_id 목록 (푸시 수신자용)."""
+    ids: list[str] = []
+    proj = (
+        supabase_admin.table("projects").select("owner_id")
+        .eq("id", project_id).limit(1).execute()
+    ).data
+    if proj and proj[0].get("owner_id"):
+        ids.append(proj[0]["owner_id"])
+    mems = (
+        supabase_admin.table("project_members").select("user_id")
+        .eq("project_id", project_id).eq("status", "accepted").execute()
+    ).data
+    ids += [m["user_id"] for m in mems if m.get("user_id")]
+    return ids
+
+
 def _display_name(user) -> str:
     rows = (
         supabase_admin.table("profiles")
@@ -99,6 +116,9 @@ def create_poll(project_id: str, req: MeetPollCreate, token: str) -> MeetPollRes
             "created_by": user.id,
         }).execute()
     ).data[0]
+    from app.services import push
+    push.notify_users(_project_member_user_ids(project_id), "일정 조율",
+                      f"'{req.title}' 일정에 응답해주세요", exclude=user.id)
     return _build_resp(row, 0, user.id)
 
 

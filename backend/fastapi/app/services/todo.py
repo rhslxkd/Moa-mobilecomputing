@@ -178,6 +178,17 @@ def create_todo(req: TodoCreate, token: str) -> TodoResponse:
         ).data
         proj_name = projs[0]["name"] if projs else None
 
+    # 담당자에게 푸시 (본인 제외)
+    if row.get("assignee_member_id"):
+        mem = (
+            supabase_admin.table("project_members").select("user_id")
+            .eq("id", row["assignee_member_id"]).limit(1).execute()
+        ).data
+        assignee_uid = mem[0]["user_id"] if mem else None
+        if assignee_uid and assignee_uid != user.id:
+            from app.services import push
+            push.notify_user(assignee_uid, "새 할 일", f"'{req.title}' 담당자로 지정됐어요")
+
     return _build(row, proj_name, _get_member(row.get("assignee_member_id")))
 
 
