@@ -550,7 +550,7 @@ export default function AddTodoScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
-  const [selectedMemberId, setSelectedMemberId] = useState<string | null>(null);
+  const [selectedMemberIds, setSelectedMemberIds] = useState<string[]>([]);
   const [difficulty, setDifficulty] = useState<number>(2); // 1=하 2=중 3=상
 
   // 선택된 프로젝트의 멤버 목록
@@ -558,7 +558,7 @@ export default function AddTodoScreen() {
   const projectMembers = selectedProject?.members ?? [];
 
   // 프로젝트 바뀌면 담당자 선택 초기화
-  useEffect(() => { setSelectedMemberId(null); }, [selectedProjectId]);
+  useEffect(() => { setSelectedMemberIds([]); }, [selectedProjectId]);
 
   // 시작일/시간
   const [startDate, setStartDate] = useState(today);
@@ -591,7 +591,7 @@ export default function AddTodoScreen() {
       title: title.trim(),
       description: description.trim() || undefined,
       project_id: tab === "project" ? selectedProjectId ?? undefined : undefined,
-      assignee_member_id: tab === "project" ? selectedMemberId ?? undefined : undefined,
+      assignee_member_ids: tab === "project" ? selectedMemberIds : [],
       due_date: toYmd(endDate),
       start_date: toYmd(startDate),
       difficulty,
@@ -669,27 +669,15 @@ export default function AddTodoScreen() {
                 contentContainerStyle={s.assigneeRow}
                 keyboardShouldPersistTaps="handled"
               >
-                <TouchableOpacity
-                  activeOpacity={0.7}
-                  onPress={() => setSelectedMemberId(null)}
-                  style={[
-                    s.assigneeChip,
-                    { borderColor: C.border },
-                    selectedMemberId === null && { backgroundColor: C.primary, borderColor: C.primary },
-                  ]}
-                >
-                  <Text style={[
-                    s.assigneeChipText,
-                    { color: selectedMemberId === null ? "#fff" : C.textMuted },
-                  ]}>없음</Text>
-                </TouchableOpacity>
                 {projectMembers.map((m) => {
-                  const active = selectedMemberId === m.id;
+                  const active = selectedMemberIds.includes(m.id);
                   return (
                     <TouchableOpacity
                       key={m.id}
                       activeOpacity={0.7}
-                      onPress={() => setSelectedMemberId(m.id)}
+                      onPress={() => setSelectedMemberIds(prev =>
+                        prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id]
+                      )}
                       style={[
                         s.assigneeChip,
                         { borderColor: C.border },

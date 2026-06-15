@@ -225,9 +225,8 @@ interface Todo {
   projectName: string;
   done: boolean;
   dueDate: string;
-  assigneeMemberId?: string;
-  assigneeName?: string;
-  assigneeRole?: string;
+  assigneeMemberIds?: string[];
+  assigneeNames?: string[];
 }
 
 // ── 투두 아이템 ───────────────────────────
@@ -275,9 +274,9 @@ function TodoItem({ todo, onToggle, onLongPress, accentColor, isDateMatch }: {
             color: todo.done ? C.textMuted : C.text,
             textDecorationLine: todo.done ? "line-through" : "none",
           }]} numberOfLines={1}>{todo.title}</Text>
-          {todo.assigneeName ? (
+          {todo.assigneeNames && todo.assigneeNames.length > 0 ? (
             <Text style={[todoS.assignee, { color: C.textMuted }]} numberOfLines={1}>
-              {todo.assigneeName}{todo.assigneeRole ? ` · ${todo.assigneeRole}` : ""}
+              {todo.assigneeNames.join(", ")}
             </Text>
           ) : null}
         </View>
@@ -467,7 +466,7 @@ export default function TodosScreen() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [editTarget, setEditTarget] = useState<Todo | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [editAssignee, setEditAssignee] = useState<string | null>(null);
+  const [editAssignees, setEditAssignees] = useState<string[]>([]);
   const [editDue, setEditDue] = useState<Date>(new Date());
   const [showEditCal, setShowEditCal] = useState(false);
 
@@ -483,9 +482,8 @@ export default function TodosScreen() {
           projectName: d.project_name ?? "개인",
           done: d.done,
           dueDate: d.due_date ?? new Date().toISOString().split("T")[0],
-          assigneeMemberId: d.assignee_member_id ?? undefined,
-          assigneeName: d.assignee_name ?? undefined,
-          assigneeRole: d.assignee_roles?.[0],
+          assigneeMemberIds: d.assignee_member_ids ?? [],
+          assigneeNames: d.assignee_names ?? [],
         })));
       }).catch(() => {}).finally(() => setIsLoading(false));
     }, [])
@@ -505,7 +503,7 @@ export default function TodosScreen() {
     if (!todo) return;
     setEditTarget(todo);
     setEditTitle(todo.title);
-    setEditAssignee(todo.assigneeMemberId ?? null);
+    setEditAssignees(todo.assigneeMemberIds ?? []);
     setEditDue(todo.dueDate ? new Date(todo.dueDate) : new Date());
     setShowEditCal(false);
   };
@@ -525,19 +523,18 @@ export default function TodosScreen() {
 
   const handleEditSave = async () => {
     if (!editTarget || !editTitle.trim()) return;
-    const newMember = editMembers.find(m => m.id === editAssignee);
     const dueYmd = toYmd(editDue);
+    const newNames = editMembers.filter(m => editAssignees.includes(m.id)).map(m => m.name);
     setTodos(prev => prev.map(t => t.id === editTarget.id ? {
       ...t,
       title: editTitle.trim(),
       dueDate: dueYmd,
-      assigneeMemberId: editAssignee ?? undefined,
-      assigneeName: newMember?.name,
-      assigneeRole: newMember?.roles?.[0],
+      assigneeMemberIds: editAssignees,
+      assigneeNames: newNames,
     } : t));
     await TodoAPI.update(editTarget.id, {
       title: editTitle.trim(),
-      assignee_member_id: editAssignee ?? "",
+      assignee_member_ids: editAssignees,
       due_date: dueYmd,
     }).catch(() => {});
     setEditTarget(null);
@@ -606,22 +603,17 @@ export default function TodosScreen() {
             {/* 담당자 선택 (프로젝트 할 일일 때) */}
             {editMembers.length > 0 && (
               <View style={{ marginBottom: 12 }}>
-                <Text style={[modalS.assigneeLabel, { color: C.textMuted }]}>담당자</Text>
+                <Text style={[modalS.assigneeLabel, { color: C.textMuted }]}>담당자 (중복 선택 가능)</Text>
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8 }}>
-                  <TouchableOpacity
-                    activeOpacity={0.7}
-                    onPress={() => setEditAssignee(null)}
-                    style={[modalS.assigneeChip, { borderColor: C.border }, !editAssignee && { backgroundColor: C.primary, borderColor: C.primary }]}
-                  >
-                    <Text style={[modalS.assigneeChipText, { color: !editAssignee ? "#fff" : C.textMuted }]}>미배정</Text>
-                  </TouchableOpacity>
                   {editMembers.map((m) => {
-                    const active = editAssignee === m.id;
+                    const active = editAssignees.includes(m.id);
                     return (
                       <TouchableOpacity
                         key={m.id}
                         activeOpacity={0.7}
-                        onPress={() => setEditAssignee(m.id)}
+                        onPress={() => setEditAssignees(prev =>
+                          prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id]
+                        )}
                         style={[modalS.assigneeChip, { borderColor: C.border }, active && { backgroundColor: C.primary, borderColor: C.primary }]}
                       >
                         <Text style={[modalS.assigneeChipText, { color: active ? "#fff" : C.text }]}>

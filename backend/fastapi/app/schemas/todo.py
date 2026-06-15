@@ -6,7 +6,7 @@ class TodoCreate(BaseModel):
     title: str = Field(..., max_length=100)
     description: Optional[str] = None
     project_id: Optional[str] = None
-    assignee_member_id: Optional[str] = None
+    assignee_member_ids: list[str] = []
     due_date: Optional[str] = None    # "YYYY-MM-DD"
     start_date: Optional[str] = None  # "YYYY-MM-DD"
     difficulty: int = 2               # 1=하 2=중 3=상
@@ -15,7 +15,7 @@ class TodoCreate(BaseModel):
 class TodoUpdate(BaseModel):
     title: Optional[str] = Field(None, max_length=100)
     description: Optional[str] = None
-    assignee_member_id: Optional[str] = None
+    assignee_member_ids: Optional[list[str]] = None
     due_date: Optional[str] = None
     start_date: Optional[str] = None
     done: Optional[bool] = None
@@ -28,9 +28,8 @@ class TodoResponse(BaseModel):
     description: Optional[str]
     project_id: Optional[str]
     project_name: Optional[str]
-    assignee_member_id: Optional[str]
-    assignee_name: Optional[str] = None
-    assignee_roles: list[str] = []
+    assignee_member_ids: list[str] = []
+    assignee_names: list[str] = []
     done: bool
     due_date: Optional[str]    # "YYYY-MM-DD"
     start_date: Optional[str]

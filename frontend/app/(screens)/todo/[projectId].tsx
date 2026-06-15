@@ -326,7 +326,7 @@ export default function ProjectTodosScreen() {
   // 수정 모달 상태
   const [editId, setEditId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState("");
-  const [editAssignee, setEditAssignee] = useState<string | null>(null);
+  const [editAssignees, setEditAssignees] = useState<string[]>([]);
   const [editDue, setEditDue] = useState<Date>(new Date());
   const [showEditCal, setShowEditCal] = useState(false);
 
@@ -336,13 +336,16 @@ export default function ProjectTodosScreen() {
     TodoAPI.listByProject(projectId).then(dtos => {
       const map: Record<string, TodoItem[]> = {};
       dtos.forEach(d => {
-        const key = d.assignee_member_id ?? "__unassigned__";
-        if (!map[key]) map[key] = [];
-        map[key].push({
-          id: d.id,
-          title: d.title,
-          done: d.done,
-          dueDate: d.due_date ? new Date(d.due_date) : new Date(),
+        const ids = d.assignee_member_ids ?? [];
+        const keys = ids.length > 0 ? ids : ["__unassigned__"];
+        keys.forEach(key => {
+          if (!map[key]) map[key] = [];
+          map[key].push({
+            id: d.id,
+            title: d.title,
+            done: d.done,
+            dueDate: d.due_date ? new Date(d.due_date) : new Date(),
+          });
         });
       });
       setTodoMap(map);
@@ -354,9 +357,15 @@ export default function ProjectTodosScreen() {
   const openEdit = (memberId: string, todoId: string) => {
     const todo = (todoMap[memberId] ?? []).find(t => t.id === todoId);
     if (!todo) return;
+    // 같은 todo가 여러 멤버 버킷에 중복될 수 있어 원본 DTO에서 ids를 가져와야 정확하지만
+    // 여기선 todoId로 전체 map에서 찾아 현재 배정된 멤버 ids를 복원
+    const allIds = Object.entries(todoMap)
+      .filter(([, todos]) => todos.some(t => t.id === todoId))
+      .map(([key]) => key)
+      .filter(k => k !== "__unassigned__");
     setEditId(todoId);
     setEditTitle(todo.title);
-    setEditAssignee(memberId === "__unassigned__" ? null : memberId);
+    setEditAssignees(allIds);
     setEditDue(todo.dueDate);
     setShowEditCal(false);
   };
@@ -374,7 +383,7 @@ export default function ProjectTodosScreen() {
     setEditId(null);
     await TodoAPI.update(id, {
       title: editTitle.trim(),
-      assignee_member_id: editAssignee ?? "",
+      assignee_member_ids: editAssignees,
       due_date: toYmd(editDue),
     }).catch(() => {});
     load();
@@ -543,23 +552,18 @@ export default function ProjectTodosScreen() {
               autoFocus
             />
 
-            {/* 담당자 */}
-            <Text style={[em.label, { color: C.textMuted }]}>담당자</Text>
+            {/* 담당자 (다중 선택) */}
+            <Text style={[em.label, { color: C.textMuted }]}>담당자 (중복 선택 가능)</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, marginBottom: 12 }}>
-              <TouchableOpacity
-                activeOpacity={0.7}
-                onPress={() => setEditAssignee(null)}
-                style={[em.chip, { borderColor: C.border }, !editAssignee && { backgroundColor: accent, borderColor: accent }]}
-              >
-                <Text style={[em.chipText, { color: !editAssignee ? "#fff" : C.textMuted }]}>미배정</Text>
-              </TouchableOpacity>
               {(project?.members ?? []).map((m) => {
-                const active = editAssignee === m.id;
+                const active = editAssignees.includes(m.id);
                 return (
                   <TouchableOpacity
                     key={m.id}
                     activeOpacity={0.7}
-                    onPress={() => setEditAssignee(m.id)}
+                    onPress={() => setEditAssignees(prev =>
+                      prev.includes(m.id) ? prev.filter(id => id !== m.id) : [...prev, m.id]
+                    )}
                     style={[em.chip, { borderColor: C.border }, active && { backgroundColor: accent, borderColor: accent }]}
                   >
                     <Text style={[em.chipText, { color: active ? "#fff" : C.text }]}>

@@ -254,9 +254,8 @@ export interface TodoDTO {
   description: string | null;
   project_id: string | null;
   project_name: string | null;
-  assignee_member_id: string | null;
-  assignee_name: string | null;
-  assignee_roles: string[];
+  assignee_member_ids: string[];
+  assignee_names: string[];
   done: boolean;
   due_date: string | null;   // "YYYY-MM-DD"
   start_date: string | null;
@@ -274,7 +273,7 @@ export const TodoAPI = {
     title: string;
     description?: string;
     project_id?: string;
-    assignee_member_id?: string;
+    assignee_member_ids?: string[];
     due_date?: string;
     start_date?: string;
     difficulty?: number;
@@ -287,7 +286,7 @@ export const TodoAPI = {
     done?: boolean;
     due_date?: string;
     difficulty?: number;
-    assignee_member_id?: string;   // "" → 미배정
+    assignee_member_ids?: string[];
   }) =>
     request<TodoDTO>(`/todos/${id}`, { method: "PATCH", body: JSON.stringify(body) }),
 
