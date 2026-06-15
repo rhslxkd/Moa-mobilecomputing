@@ -41,9 +41,9 @@ def register_push_token(body: PushTokenBody, token: str = Depends(bearer_token))
     _log = logging.getLogger("moa.push")
     _log.info("push-token 등록 요청 user=%s token_prefix=%s", user_id, body.token[:20] if body.token else "EMPTY")
 
-    # upsert: 같은 유저의 토큰은 덮어쓰기
-    supabase_admin.table("push_tokens").upsert(
-        {"user_id": user_id, "token": body.token},
-        on_conflict="user_id",
+    # 기존 토큰 전부 삭제 후 새로 삽입 (중복 방지)
+    supabase_admin.table("push_tokens").delete().eq("user_id", user_id).execute()
+    supabase_admin.table("push_tokens").insert(
+        {"user_id": user_id, "token": body.token}
     ).execute()
     _log.info("push-token 저장 완료 user=%s", user_id)
