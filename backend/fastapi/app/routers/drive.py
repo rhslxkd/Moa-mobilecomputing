@@ -9,6 +9,20 @@ import app.services.drive as drive_svc
 router = APIRouter(prefix="/drive", tags=["drive"])
 
 
+def _decode_filename(raw: str | None) -> str:
+    """React Native FormData가 한글 파일명을 percent-encoding해 보내는 경우 복원."""
+    name = raw or "file"
+    if "%" in name:
+        try:
+            from urllib.parse import unquote
+            decoded = unquote(name)
+            if decoded and decoded != name:
+                return decoded
+        except Exception:
+            pass
+    return name
+
+
 class MoveBody(BaseModel):
     target_folder_id: Optional[str] = None
 
@@ -69,7 +83,7 @@ async def upload_file(
     data = await file.read()
     return await run_in_threadpool(
         drive_svc.upload_file,
-        data, file.filename or "file", file.content_type, project_id, folder_id, token,
+        data, _decode_filename(file.filename), file.content_type, project_id, folder_id, token,
     )
 
 

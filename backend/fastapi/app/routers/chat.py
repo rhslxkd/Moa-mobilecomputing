@@ -61,8 +61,9 @@ async def send_file(
     token: str = Depends(bearer_token),
 ):
     data = await file.read()
+    from app.routers.drive import _decode_filename
     return await run_in_threadpool(
-        chat_svc.send_file_message, room_id, data, file.filename or "file", file.content_type, token,
+        chat_svc.send_file_message, room_id, data, _decode_filename(file.filename), file.content_type, token,
     )
 
 
