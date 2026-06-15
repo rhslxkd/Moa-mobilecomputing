@@ -4,7 +4,7 @@
  */
 import React, { useState, useCallback } from "react";
 import {
-  View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert,
+  View, Text, ScrollView, TouchableOpacity, StyleSheet, Modal, TextInput, Alert, ActivityIndicator,
 } from "react-native";
 import { SafeAreaView, useSafeAreaInsets } from "react-native-safe-area-context";
 import { useRouter, useLocalSearchParams, useFocusEffect } from "expo-router";
@@ -29,6 +29,7 @@ export default function When2MeetListScreen() {
   const { projectId } = useLocalSearchParams<{ projectId: string }>();
 
   const [polls, setPolls] = useState<MeetPollDTO[]>([]);
+  const [loading, setLoading] = useState(false);
   const [createOpen, setCreateOpen] = useState(false);
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState<Date>(new Date());
@@ -39,7 +40,11 @@ export default function When2MeetListScreen() {
 
   const load = useCallback(() => {
     if (!projectId) return;
-    MeetPollAPI.listByProject(projectId).then(setPolls).catch(() => {});
+    setLoading(true);
+    MeetPollAPI.listByProject(projectId)
+      .then(setPolls)
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, [projectId]);
   useFocusEffect(load);
 
@@ -88,7 +93,11 @@ export default function When2MeetListScreen() {
       </View>
 
       <ScrollView contentContainerStyle={{ padding: 16, gap: 12 }}>
-        {polls.length === 0 ? (
+        {loading ? (
+          <View style={{ alignItems: "center", paddingTop: 80 }}>
+            <ActivityIndicator size="large" color={C.primary} />
+          </View>
+        ) : polls.length === 0 ? (
           <View style={{ alignItems: "center", paddingTop: 80, gap: 8 }}>
             <Text style={{ fontSize: 40 }}>🗓️</Text>
             <Text style={{ color: C.text, fontSize: 16, fontWeight: "700" }}>아직 일정 조율이 없어요</Text>
