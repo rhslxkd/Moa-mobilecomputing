@@ -349,6 +349,7 @@ function Step3({ email, onVerified }: { email: string; onVerified: () => void })
     try {
       const data = await AuthAPI.verifyEmail({ email, token: otp.trim() });
       await TokenStore.set(data.access_token);
+      if (data.refresh_token) await TokenStore.setRefresh(data.refresh_token);
       onVerified();
     } catch (err: any) {
       setOtpError(err?.message ?? "인증번호가 올바르지 않습니다.");

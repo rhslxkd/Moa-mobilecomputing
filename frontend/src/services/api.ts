@@ -15,9 +15,11 @@ export const BASE_URL = "https://moa-mobilecomputing-production.up.railway.app";
 import * as SecureStore from "expo-secure-store";
 
 const TOKEN_KEY = "moa_access_token";
+const REFRESH_KEY = "moa_refresh_token";
 
 // 메모리 캐시 — 매 요청마다 SecureStore 호출 방지
 let _accessToken: string | null = null;
+let _refreshToken: string | null = null;
 
 export const TokenStore = {
   get: () => _accessToken,
@@ -25,19 +27,49 @@ export const TokenStore = {
     _accessToken = token;
     await SecureStore.setItemAsync(TOKEN_KEY, token);
   },
+  setRefresh: async (token: string) => {
+    _refreshToken = token;
+    await SecureStore.setItemAsync(REFRESH_KEY, token);
+  },
   load: async () => {
-    // 앱 시작 시 1회 호출 — 저장된 토큰 복원
     const stored = await SecureStore.getItemAsync(TOKEN_KEY);
     _accessToken = stored;
+    const storedRefresh = await SecureStore.getItemAsync(REFRESH_KEY);
+    _refreshToken = storedRefresh;
     return stored;
   },
   clear: async () => {
     _accessToken = null;
+    _refreshToken = null;
     await SecureStore.deleteItemAsync(TOKEN_KEY);
+    await SecureStore.deleteItemAsync(REFRESH_KEY);
   },
 };
 
 // ── HTTP 헬퍼 ──────────────────────────────────────────────────
+let _isRefreshing = false;
+
+async function tryRefreshToken(): Promise<string | null> {
+  if (!_refreshToken || _isRefreshing) return null;
+  _isRefreshing = true;
+  try {
+    const res = await fetch(`${BASE_URL}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refresh_token: _refreshToken }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.access_token) {
+      await TokenStore.set(data.access_token);
+      if (data.refresh_token) await TokenStore.setRefresh(data.refresh_token);
+      return data.access_token;
+    }
+  } catch {}
+  finally { _isRefreshing = false; }
+  return null;
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -55,6 +87,22 @@ async function request<T>(
   }
 
   const res = await fetch(`${BASE_URL}${path}`, { ...options, headers });
+
+  // 토큰 만료 시 자동 갱신 후 재시도
+  if (res.status === 401 && !overrideToken) {
+    const newToken = await tryRefreshToken();
+    if (newToken) {
+      const retryHeaders = { ...headers, Authorization: `Bearer ${newToken}` };
+      const retryRes = await fetch(`${BASE_URL}${path}`, { ...options, headers: retryHeaders });
+      const retryData = await retryRes.json().catch(() => ({}));
+      if (!retryRes.ok) {
+        const detail = retryData?.detail;
+        throw new Error(typeof detail === "string" ? detail : "서버 오류가 발생했습니다.");
+      }
+      return retryData as T;
+    }
+  }
+
   const data = await res.json().catch(() => ({}));
 
   if (!res.ok) {

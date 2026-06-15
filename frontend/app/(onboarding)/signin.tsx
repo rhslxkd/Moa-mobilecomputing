@@ -57,6 +57,7 @@ export default function SignInScreen() {
     try {
       const data = await AuthAPI.login({ username: id.trim(), password });
       await TokenStore.set(data.access_token);
+      if (data.refresh_token) await TokenStore.setRefresh(data.refresh_token);
       await fetchUser();
       router.replace("/(tabs)");
     } catch (err: any) {
