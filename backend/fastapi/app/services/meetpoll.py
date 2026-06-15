@@ -116,9 +116,12 @@ def create_poll(project_id: str, req: MeetPollCreate, token: str) -> MeetPollRes
             "created_by": user.id,
         }).execute()
     ).data[0]
-    from app.services import push
-    push.notify_users(_project_member_user_ids(project_id), "일정 조율",
-                      f"'{req.title}' 일정에 응답해주세요", exclude=user.id)
+    try:
+        from app.services import push
+        push.notify_users(_project_member_user_ids(project_id), "일정 조율",
+                          f"'{req.title}' 일정에 응답해주세요", exclude=user.id)
+    except Exception:
+        pass
     return _build_resp(row, 0, user.id)
 
 
