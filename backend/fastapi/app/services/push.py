@@ -68,11 +68,13 @@ def send_to_user(user_id: str, title: str, body: str) -> None:
         if not rows:
             logger.warning("FCM 미발송: user=%s 에 등록된 push_token 없음", user_id)
             return
+        # 중복 토큰 제거 — 같은 토큰으로 여러 번 보내지 않음
+        seen: set[str] = set()
         for r in rows:
-            if r.get("token"):
-                send_push(r["token"], title, body)
-            else:
-                logger.warning("FCM 미발송: token 값 비어있음 (user=%s)", user_id)
+            token = r.get("token")
+            if token and token not in seen:
+                seen.add(token)
+                send_push(token, title, body)
     except Exception as e:
         logger.warning("푸시 토큰 조회/발송 실패 (user=%s): %s", user_id, e)
 
