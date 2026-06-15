@@ -564,7 +564,10 @@ function MeetPollTab({ projectId }: { projectId: string }) {
                   const isSel = selectedSlots.includes(slot)
                   const isBest = selected.best_slots.includes(slot)
                   const opacity = selected.total_respondents > 0 ? count / selected.total_respondents : 0
-                  return <td key={d} onClick={() => toggleSlot(slot)} style={{ width: 48, height: 28, cursor: 'pointer', borderRadius: 4, background: isSel ? `rgba(0,169,236,${0.3 + opacity * 0.7})` : count > 0 ? `rgba(0,169,236,${opacity * 0.5})` : 'var(--bg-muted)', border: isBest ? '2px solid var(--primary)' : '1px solid var(--border)', textAlign: 'center', lineHeight: '28px', fontWeight: count > 0 ? 600 : 400, color: count > 0 ? 'var(--primary)' : 'transparent' }}>{count || ''}</td>
+                  const bg = isSel
+                    ? count > 0 ? `rgba(0,169,236,${0.25 + opacity * 0.55})` : 'rgba(0,169,236,0.25)'
+                    : count > 0 ? `rgba(0,169,236,${opacity * 0.45})` : 'var(--bg-muted)'
+                  return <td key={d} onClick={() => toggleSlot(slot)} style={{ width: 48, height: 28, cursor: 'pointer', borderRadius: 4, background: bg, border: isSel ? '2px solid var(--primary)' : isBest ? '2px solid var(--primary)' : '1px solid var(--border)', textAlign: 'center', lineHeight: '28px', fontWeight: count > 0 ? 600 : 400, color: count > 0 ? 'var(--primary)' : isSel ? 'var(--primary)' : 'transparent', fontSize: 11 }}>{count > 0 ? count : isSel ? '✓' : ''}</td>
                 })}
               </tr>
             ))}</tbody>
