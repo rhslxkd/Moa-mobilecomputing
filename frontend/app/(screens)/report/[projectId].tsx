@@ -318,7 +318,7 @@ export default function ReportScreen() {
           <Text style={[s.contentTitle, { color: C.text }]}>팀원별 기여도</Text>
           <View style={s.contribList}>
             {members.map((member, idx) => (
-              <ContribBar key={member.name} member={member} accent={project.color} rank={idx} />
+              <ContribBar key={member.member_id ?? `${member.name}-${idx}`} member={member} accent={project.color} rank={idx} />
             ))}
           </View>
         </View>
