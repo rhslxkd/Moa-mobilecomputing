@@ -2,7 +2,7 @@
  * app/(tabs)/more.tsx — 프로필 탭
  */
 
-import React from "react";
+import React, { useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -12,11 +12,12 @@ import {
   ActivityIndicator,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useRouter } from "expo-router";
+import { useRouter, useFocusEffect } from "expo-router";
 import Svg, { Path } from "react-native-svg";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProject } from "@/contexts/ProjectContext";
+import { ReportAPI } from "@/services/api";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
 
@@ -41,10 +42,11 @@ function FriendIcon({ color }: { color: string }) {
 
 type HealthStatus = { label: string; desc: string; color: string; bg: string; border: string };
 
-function getProjectHealth(status: string): HealthStatus {
-  if (status === "active")    return { label: "양호", desc: "팀원 모두 활발히 참여 중",  color: "#27AE60", bg: "rgba(34,255,136,0.1)",  border: "#27AE60" };
-  if (status === "upcoming")  return { label: "보통", desc: "기여도 불균형 발생",        color: "#E2B93B", bg: "rgba(226,185,59,0.1)", border: "#E2B93B" };
-  return                             { label: "주의", desc: "무임승차 주의 필요",        color: "#EB5757", bg: "rgba(235,87,87,0.1)",  border: "#EB5757" };
+/** 내 기여도 점수 기반: 80↑ 양호 / 60↑ 보통 / 그 외 주의 */
+function getProjectHealth(score: number): HealthStatus {
+  if (score >= 80) return { label: "양호", desc: `내 기여도 ${score}점 · 잘 참여 중`,    color: "#27AE60", bg: "rgba(34,255,136,0.1)",  border: "#27AE60" };
+  if (score >= 60) return { label: "보통", desc: `내 기여도 ${score}점 · 조금 더 힘내요`, color: "#E2B93B", bg: "rgba(226,185,59,0.1)", border: "#E2B93B" };
+  return                  { label: "주의", desc: `내 기여도 ${score}점 · 참여가 필요해요`, color: "#EB5757", bg: "rgba(235,87,87,0.1)",  border: "#EB5757" };
 }
 
 export default function MoreScreen() {
@@ -52,6 +54,27 @@ export default function MoreScreen() {
   const router = useRouter();
   const { user } = useAuth();
   const { projects, loading } = useProject();
+
+  // 프로젝트별 "내 기여도 점수" (리포트에서 추출). null = 로딩중/없음
+  const [myScores, setMyScores] = useState<Record<string, number | null>>({});
+
+  useFocusEffect(
+    useCallback(() => {
+      let cancelled = false;
+      projects.forEach((proj) => {
+        ReportAPI.get(proj.id)
+          .then((rep) => {
+            if (cancelled) return;
+            const mine = rep.members.find((m) => m.user_id && m.user_id === user?.id);
+            setMyScores((prev) => ({ ...prev, [proj.id]: mine ? mine.score : 0 }));
+          })
+          .catch(() => {
+            if (!cancelled) setMyScores((prev) => ({ ...prev, [proj.id]: null }));
+          });
+      });
+      return () => { cancelled = true; };
+    }, [projects, user?.id])
+  );
 
   const displayName = user?.fullName || user?.username || "-";
   const avatarChar = displayName.charAt(0);
@@ -159,7 +182,9 @@ export default function MoreScreen() {
               <ActivityIndicator size="small" color={C.primary} />
             </View>
           ) : projects.map((proj, idx) => {
-            const health = getProjectHealth(proj.status);
+            const score = myScores[proj.id];
+            const scoreLoading = score === undefined;
+            const health = getProjectHealth(score ?? 0);
             return (
               <View
                 key={proj.id}
@@ -174,11 +199,17 @@ export default function MoreScreen() {
                 </View>
                 <View style={s.healthInfo}>
                   <Text style={[s.healthName, { color: C.text }]} numberOfLines={1}>{proj.name}</Text>
-                  <Text style={[s.healthDesc, { color: C.textMuted }]}>{health.desc}</Text>
+                  <Text style={[s.healthDesc, { color: C.textMuted }]}>
+                    {scoreLoading ? "기여도 분석 중…" : health.desc}
+                  </Text>
                 </View>
-                <View style={[s.healthBadge, { backgroundColor: health.bg, borderColor: health.border }]}>
-                  <Text style={[s.healthBadgeText, { color: health.color }]}>{health.label}</Text>
-                </View>
+                {scoreLoading ? (
+                  <ActivityIndicator size="small" color={C.textMuted} />
+                ) : (
+                  <View style={[s.healthBadge, { backgroundColor: health.bg, borderColor: health.border }]}>
+                    <Text style={[s.healthBadgeText, { color: health.color }]}>{health.label}</Text>
+                  </View>
+                )}
               </View>
             );
           })}
