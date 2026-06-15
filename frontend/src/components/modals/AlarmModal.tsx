@@ -27,7 +27,7 @@ import {
 } from "react-native";
 import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
-import { NotificationAPI, InvitationAPI } from "@/services/api";
+import { NotificationAPI, InvitationAPI, FriendsAPI } from "@/services/api";
 import { useProject } from "@/contexts/ProjectContext";
 
 const PRESET_ROLES = ["팀장", "개발자", "디자이너", "기획자", "QA", "데이터 분석"];
@@ -110,10 +110,31 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
     Alert.alert("수락 완료", `'${roleTarget.projectName}' 프로젝트 팀원이 됐어요!`);
   };
 
+  const getFriendshipId = (alarmId: string) => alarmId.replace("friend-", "");
+
+  const handleAcceptFriend = async (alarm: AlarmItem) => {
+    await FriendsAPI.accept(getFriendshipId(alarm.id)).catch(() => {});
+    loadAlarms();
+    Alert.alert("친구 수락", `${alarm.body.split("님")[0]}님과 친구가 됐어요!`);
+  };
+
+  const handleDeclineFriend = (alarm: AlarmItem) => {
+    Alert.alert("친구 거절", "친구 요청을 거절할까요?", [
+      { text: "취소", style: "cancel" },
+      {
+        text: "거절", style: "destructive",
+        onPress: async () => {
+          await FriendsAPI.remove(getFriendshipId(alarm.id)).catch(() => {});
+          loadAlarms();
+        },
+      },
+    ]);
+  };
+
   // 알림 탭 → 읽음 처리 + 해당 화면으로 이동
   const handleAlarmPress = async (alarm: AlarmItem) => {
-    // 초대 알림은 수락/거절 버튼으로 처리하므로 이동 안 함
-    if (alarm.id.startsWith("invite-")) return;
+    // 초대/친구 알림은 수락/거절 버튼으로 처리하므로 이동 안 함
+    if (alarm.id.startsWith("invite-") || alarm.id.startsWith("friend-")) return;
 
     await NotificationAPI.markRead(alarm.id).catch(() => {});
     setAlarms((prev) => prev.filter((a) => a.id !== alarm.id));
@@ -223,6 +244,25 @@ export default function AlarmModal({ isOpen, onClose }: AlarmModalProps) {
                         </TouchableOpacity>
                         <TouchableOpacity
                           onPress={() => handleDeclineInvite(alarm)}
+                          style={[styles.inviteBtn, { borderWidth: 1, borderColor: C.border }]}
+                          activeOpacity={0.7}
+                        >
+                          <Text style={[styles.inviteBtnText, { color: C.textMuted }]}>거절</Text>
+                        </TouchableOpacity>
+                      </View>
+                    )}
+                    {/* 친구 요청 수락/거절 버튼 */}
+                    {alarm.id.startsWith("friend-") && (
+                      <View style={styles.inviteButtons}>
+                        <TouchableOpacity
+                          onPress={() => handleAcceptFriend(alarm)}
+                          style={[styles.inviteBtn, { backgroundColor: C.primary }]}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.inviteBtnText}>수락</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          onPress={() => handleDeclineFriend(alarm)}
                           style={[styles.inviteBtn, { borderWidth: 1, borderColor: C.border }]}
                           activeOpacity={0.7}
                         >
