@@ -255,6 +255,8 @@ export const MeetingAPI = {
   list: (projectId?: string) => request<MeetingDTO[]>(`/meetings${projectId ? `?project_id=${projectId}` : ""}`, { method: "GET" }),
   get: (id: string) => request<MeetingDTO>(`/meetings/${id}`, { method: "GET" }),
   delete: (id: string) => request<void>(`/meetings/${id}`, { method: "DELETE" }),
+  start: (title: string, projectId: string) =>
+    request<MeetingDTO>('/meetings/start', { method: 'POST', body: JSON.stringify({ title, project_id: projectId }) }),
 };
 
 export const ReportAPI = {
@@ -285,6 +287,10 @@ export const DriveAPI = {
   },
   deleteFile: (id: string) => request<void>(`/drive/files/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: string) => request<{ url: string }>(`/drive/files/${id}/download`, { method: 'GET' }),
+  autoOrganize: (projectId: string) =>
+    request<{ moved: number; folders: number; message: string }>('/drive/auto-organize', {
+      method: 'POST', body: JSON.stringify({ project_id: projectId }),
+    }),
   uploadFile: async (file: File, projectId?: string, folderId?: string): Promise<FileDTO> => {
     const form = new FormData();
     form.append('file', file);

@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import QRCode from 'qrcode'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   ProjectAPI, TodoAPI, MeetingAPI, ReportAPI, MeetPollAPI, ChatAPI, DriveAPI, MemberAPI, FriendAPI,
@@ -498,9 +499,35 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
   const [meetings, setMeetings] = useState<MeetingDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<MeetingDTO | null>(null)
+  const [detailTab, setDetailTab] = useState<'summary' | 'attendance'>('summary')
 
-  const load = () => MeetingAPI.list(projectId).then(setMeetings).finally(() => setLoading(false))
-  useEffect(() => { load() }, [projectId])
+  // 회의 시작 모달
+  const [showStart, setShowStart] = useState(false)
+  const [startTitle, setStartTitle] = useState('')
+  const [starting, setStarting] = useState(false)
+  const [activeMeeting, setActiveMeeting] = useState<MeetingDTO | null>(null)
+  const [qrDataUrl, setQrDataUrl] = useState('')
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
+
+  const load = useCallback(() => MeetingAPI.list(projectId).then(setMeetings).finally(() => setLoading(false)), [projectId])
+  useEffect(() => { load() }, [load])
+
+  const handleStart = async () => {
+    if (!startTitle.trim()) return
+    setStarting(true)
+    try {
+      const meeting = await MeetingAPI.start(startTitle.trim(), projectId)
+      setActiveMeeting(meeting)
+      setShowStart(false)
+      setStartTitle('')
+      // QR에 인코딩할 URL: 앱에서 /meetings/{id}/attend 호출하는 딥링크 또는 웹 URL
+      const attendUrl = `${window.location.origin}/attend/${meeting.id}`
+      const dataUrl = await QRCode.toDataURL(attendUrl, { width: 240, margin: 2 })
+      setQrDataUrl(dataUrl)
+      load()
+    } catch (err: any) { alert(err.message) }
+    finally { setStarting(false) }
+  }
 
   const handleDelete = async (e: React.MouseEvent, meetingId: string) => {
     e.stopPropagation()
@@ -511,10 +538,28 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
 
   if (loading) return <div style={s.center}><span className="spinner" /></div>
 
+  // QR 모달 (회의 진행 중)
+  if (activeMeeting && qrDataUrl) return (
+    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
+      <div style={{ background: 'var(--bg-card)', borderRadius: 20, padding: 32, border: '1px solid var(--border)' }}>
+        <div style={{ fontSize: 22, marginBottom: 8 }}>🎙</div>
+        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{activeMeeting.title}</div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>회의가 시작됐어요. QR을 스캔해 출석체크하세요.</div>
+        <img src={qrDataUrl} alt="출석 QR" style={{ width: 220, height: 220, borderRadius: 12, marginBottom: 20 }} />
+        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 24, wordBreak: 'break-all', padding: '0 16px' }}>
+          {`${window.location.origin}/attend/${activeMeeting.id}`}
+        </div>
+        <button onClick={() => { setActiveMeeting(null); setQrDataUrl('') }}
+          style={{ ...s.addBtn, width: '100%', padding: '12px 0' }}>회의 종료</button>
+      </div>
+    </div>
+  )
+
+  // 회의 상세
   if (selected) return (
     <div style={{ maxWidth: 640 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <button style={s.backLink} onClick={() => setSelected(null)}>← 목록으로</button>
+        <button style={s.backLink} onClick={() => { setSelected(null); setDetailTab('summary') }}>← 목록으로</button>
         {isLeader && (
           <button onClick={e => handleDelete(e, selected.id)}
             style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 12, border: '1px solid var(--danger)', cursor: 'pointer' }}>
@@ -522,22 +567,97 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
           </button>
         )}
       </div>
-      <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{selected.title}</h2>
+      <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{selected.title}</h2>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
-        {selected.started_at ? new Date(selected.started_at).toLocaleString('ko-KR') : ''} · {Math.round(selected.duration_seconds / 60)}분
+        {selected.started_at ? new Date(selected.started_at).toLocaleString('ko-KR') : ''}{selected.duration_seconds ? ` · ${Math.round(selected.duration_seconds / 60)}분` : ''}
       </div>
-      {selected.summary.length > 0 && <Section title="요약"><ul style={{ paddingLeft: 16 }}>{selected.summary.map((s, i) => <li key={i} style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 4 }}>{s}</li>)}</ul></Section>}
-      {selected.keywords.length > 0 && <Section title="키워드"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{selected.keywords.map(k => <span key={k} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 12 }}>{k}</span>)}</div></Section>}
-      {selected.participants.length > 0 && <Section title="참여자">{selected.participants.map(p => <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}><span style={{ fontSize: 13 }}>{p.name}</span><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{Math.round(p.speak_time_seconds / 60)}분 발언</span></div>)}</Section>}
-      {selected.action_items.length > 0 && <Section title="액션 아이템">{selected.action_items.map((a, i) => <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0' }}><span style={{ color: a.added ? 'var(--success)' : 'var(--text-muted)' }}>•</span><span style={{ fontSize: 13, color: 'var(--text-sub)' }}>{a.title}</span></div>)}</Section>}
+
+      {/* 탭 */}
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+        {(['summary', 'attendance'] as const).map(t => (
+          <button key={t} onClick={() => setDetailTab(t)}
+            style={{ padding: '6px 16px', borderRadius: 20, border: 'none', background: detailTab === t ? 'var(--primary)' : 'var(--bg-muted)', color: detailTab === t ? '#fff' : 'var(--text-sub)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            {t === 'summary' ? '회의록' : '출석'}
+          </button>
+        ))}
+      </div>
+
+      {detailTab === 'summary' && (
+        <>
+          {selected.summary.length > 0 && <Section title="요약"><ul style={{ paddingLeft: 16 }}>{selected.summary.map((s, i) => <li key={i} style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 4 }}>{s}</li>)}</ul></Section>}
+          {selected.keywords.length > 0 && <Section title="키워드"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{selected.keywords.map(k => <span key={k} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 12 }}>{k}</span>)}</div></Section>}
+          {selected.participants.length > 0 && <Section title="발언자">{selected.participants.map(p => (
+            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 13 }}>{p.name}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{Math.round(p.speak_time_seconds / 60)}분 발언</span>
+            </div>
+          ))}</Section>}
+          {selected.action_items.length > 0 && <Section title="액션 아이템">{selected.action_items.map((a, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0' }}>
+              <span style={{ color: a.added ? 'var(--success)' : 'var(--text-muted)' }}>•</span>
+              <span style={{ fontSize: 13, color: 'var(--text-sub)' }}>{a.title}</span>
+            </div>
+          ))}</Section>}
+          {selected.summary.length === 0 && selected.participants.length === 0 && (
+            <div style={s.empty}>회의록이 아직 없습니다.</div>
+          )}
+        </>
+      )}
+
+      {detailTab === 'attendance' && (
+        <Section title={`출석 (${selected.attendance?.length ?? 0}명)`}>
+          {(selected.attendance ?? []).length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>출석 기록이 없습니다.</div>
+          ) : (selected.attendance ?? []).map((a, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</div>
+                {a.joined_at && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(a.joined_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 참여</div>}
+              </div>
+              <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 10, background: a.late_seconds > 0 ? '#FEF2F2' : '#F0FDF4', color: a.late_seconds > 0 ? '#DC2626' : '#16A34A', fontWeight: 600 }}>
+                {a.late_seconds > 0 ? `${Math.round(a.late_seconds / 60)}분 지각` : '출석'}
+              </span>
+            </div>
+          ))}
+        </Section>
+      )}
     </div>
   )
 
   return (
     <div style={{ maxWidth: 640 }}>
+      {/* 회의 시작 버튼 */}
+      <button onClick={() => setShowStart(true)}
+        style={{ ...s.addBtn, width: '100%', padding: '12px 0', marginBottom: 20, fontSize: 15 }}>
+        🎙 회의 시작
+      </button>
+
+      {/* 회의 시작 모달 */}
+      {showStart && (
+        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
+          onClick={() => setShowStart(false)}>
+          <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 380 }} onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>회의 시작</div>
+            <input style={{ ...s.input, width: '100%', marginBottom: 16, boxSizing: 'border-box' }}
+              placeholder="회의 제목" value={startTitle} onChange={e => setStartTitle(e.target.value)}
+              autoFocus onKeyDown={e => e.key === 'Enter' && handleStart()} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={handleStart} disabled={starting || !startTitle.trim()}
+                style={{ ...s.addBtn, flex: 1, opacity: starting || !startTitle.trim() ? 0.5 : 1 }}>
+                {starting ? '시작 중...' : '시작'}
+              </button>
+              <button onClick={() => setShowStart(false)}
+                style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                취소
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {meetings.length === 0 ? <div style={s.empty}>회의 기록이 없습니다</div>
         : meetings.map(m => (
-          <div key={m.id} style={{ ...s.meetCard, position: 'relative' }} onClick={() => setSelected(m)}>
+          <div key={m.id} style={{ ...s.meetCard, position: 'relative', cursor: 'pointer' }} onClick={() => setSelected(m)}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, paddingRight: isLeader ? 60 : 0 }}>{m.title}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {m.started_at ? new Date(m.started_at).toLocaleDateString('ko-KR') : m.created_at.slice(0, 10)} · {Math.round(m.duration_seconds / 60)}분 · 참여자 {m.participants.length}명
@@ -546,6 +666,7 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
             {isLeader && <button onClick={e => handleDelete(e, m.id)} style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 6, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 11, border: '1px solid var(--danger)', cursor: 'pointer' }}>삭제</button>}
           </div>
         ))}
+      <canvas ref={qrCanvasRef} style={{ display: 'none' }} />
     </div>
   )
 }
@@ -614,15 +735,17 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
   const [folders, setFolders] = useState<FolderDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [newFolder, setNewFolder] = useState('')
+  const [organizing, setOrganizing] = useState(false)
+  const [organizeMsg, setOrganizeMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
 
-  const load = () => {
+  const load = useCallback(() => {
     Promise.all([
       DriveAPI.folders(projectId),
       DriveAPI.files(projectId),
     ]).then(([folds, fils]) => { setFolders(folds); setFiles(fils) }).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [projectId])
+  }, [projectId])
+  useEffect(() => { load() }, [load])
 
   const createFolder = async () => {
     if (!newFolder.trim()) return
@@ -661,13 +784,24 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
     e.target.value = ''
   }
 
+  const autoOrganize = async () => {
+    if (files.length === 0) { alert('정리할 파일이 없습니다.'); return }
+    setOrganizing(true); setOrganizeMsg('')
+    try {
+      const result = await DriveAPI.autoOrganize(projectId)
+      setOrganizeMsg(result.message || `${result.moved}개 파일을 정리했어요.`)
+      load()
+    } catch (err: any) { setOrganizeMsg(err.message || 'AI 정리에 실패했습니다.') }
+    finally { setOrganizing(false) }
+  }
+
   const formatSize = (b: number) => b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : b > 1024 ? `${(b / 1024).toFixed(0)}KB` : `${b}B`
 
   if (loading) return <div style={s.center}><span className="spinner" /></div>
 
   return (
     <div style={{ maxWidth: 640 }}>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
         <div style={{ display: 'flex', gap: 8, flex: 1 }}>
           <input style={{ ...s.input, flex: 1 }} placeholder="새 폴더 이름" value={newFolder} onChange={e => setNewFolder(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolder()} />
           <button style={s.addBtn} onClick={createFolder}>폴더 만들기</button>
@@ -675,6 +809,15 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
         <button style={s.addBtn} onClick={() => fileRef.current?.click()}>📎 파일 업로드</button>
         <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={uploadFile} />
       </div>
+      <button onClick={autoOrganize} disabled={organizing}
+        style={{ width: '100%', marginBottom: 16, padding: '10px 0', borderRadius: 10, border: '1px solid var(--primary)', background: 'var(--primary-bg)', color: 'var(--primary)', fontWeight: 700, fontSize: 14, cursor: organizing ? 'not-allowed' : 'pointer', opacity: organizing ? 0.6 : 1 }}>
+        {organizing ? '✨ AI가 정리 중...' : '✨ AI로 비슷한 파일 정리하기'}
+      </button>
+      {organizeMsg && (
+        <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 13 }}>
+          {organizeMsg}
+        </div>
+      )}
 
       {folders.length > 0 && (
         <div style={{ marginBottom: 14 }}>
