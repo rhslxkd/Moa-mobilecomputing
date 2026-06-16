@@ -135,15 +135,16 @@ def _unread_count(room_id: str, user_id: str) -> int:
 
 def list_rooms(token: str) -> list[ChatRoomResponse]:
     user = _get_user(token)
-    my = (
+    my_memberships = (
         supabase_admin.table("chat_room_members")
-        .select("room_id")
+        .select("room_id, last_read_at")
         .eq("user_id", user.id)
         .execute()
     ).data
-    room_ids = [m["room_id"] for m in my]
+    room_ids = [m["room_id"] for m in my_memberships]
     if not room_ids:
         return []
+    my_last_read = {m["room_id"]: m.get("last_read_at") for m in my_memberships}
 
     rooms = (
         supabase_admin.table("chat_rooms")
@@ -152,30 +153,75 @@ def list_rooms(token: str) -> list[ChatRoomResponse]:
         .execute()
     ).data
 
-    # 프로젝트명 매핑
+    # 프로젝트명 일괄 조회
     proj_ids = [r["project_id"] for r in rooms if r.get("project_id")]
     proj_map: dict[str, str] = {}
     if proj_ids:
         projs = supabase_admin.table("projects").select("id, name").in_("id", proj_ids).execute().data
         proj_map = {p["id"]: p["name"] for p in projs}
 
+    # 전체 방 멤버 일괄 조회
+    all_room_members = (
+        supabase_admin.table("chat_room_members")
+        .select("room_id, user_id")
+        .in_("room_id", room_ids)
+        .execute()
+    ).data
+    members_by_room: dict[str, list[str]] = {}
+    for rm in all_room_members:
+        members_by_room.setdefault(rm["room_id"], []).append(rm["user_id"])
+
+    # direct 방 상대방 프로필 일괄 조회
+    other_user_ids: list[str] = []
+    for r in rooms:
+        if r["type"] == "direct":
+            others = [uid for uid in members_by_room.get(r["id"], []) if uid != user.id]
+            other_user_ids.extend(others)
+    pmap = _profiles_map(other_user_ids) if other_user_ids else {}
+
+    # 최근 메시지 일괄 조회 (room_id별 최신 1건)
+    all_messages = (
+        supabase_admin.table("messages")
+        .select("room_id, content, created_at, sender_id")
+        .in_("room_id", room_ids)
+        .order("created_at", desc=True)
+        .execute()
+    ).data
+    last_msg_by_room: dict[str, dict] = {}
+    for msg in all_messages:
+        rid = msg["room_id"]
+        if rid not in last_msg_by_room:
+            last_msg_by_room[rid] = msg
+
     out: list[ChatRoomResponse] = []
     for r in rooms:
-        members = _member_ids(r["id"])
+        rid = r["id"]
+        members = members_by_room.get(rid, [])
         if r["type"] == "project":
             name = proj_map.get(r.get("project_id"), "프로젝트")
         else:
-            others = [m for m in members if m != user.id]
-            pmap = _profiles_map(others)
+            others = [uid for uid in members if uid != user.id]
             name = _display_name(pmap[others[0]]) if others and others[0] in pmap else "대화"
-        last_msg, last_at = _last_message(r["id"])
+
+        last = last_msg_by_room.get(rid)
+        last_msg = last["content"] if last else None
+        last_at = last["created_at"] if last else None
+
+        # 미읽음: last_read_at 이후 타인 메시지 수
+        last_read = my_last_read.get(rid)
+        unread = sum(
+            1 for msg in all_messages
+            if msg["room_id"] == rid
+            and msg["sender_id"] != user.id
+            and (not last_read or msg["created_at"] > last_read)
+        )
+
         out.append(ChatRoomResponse(
-            id=r["id"], type=r["type"], name=name,
+            id=rid, type=r["type"], name=name,
             project_id=r.get("project_id"), member_count=len(members),
             last_message=last_msg, last_message_at=last_at,
-            unread_count=_unread_count(r["id"], user.id),
+            unread_count=unread,
         ))
-    # 최근 메시지 순 정렬
     out.sort(key=lambda x: x.last_message_at or "", reverse=True)
     return out
 
