@@ -666,20 +666,27 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
   const [organizing, setOrganizing] = useState(false)
   const [organizeMsg, setOrganizeMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [folderStack, setFolderStack] = useState<{ id: string; name: string }[]>([])
+  const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : undefined
 
   const load = useCallback(() => {
+    setLoading(true)
+    const fid = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : undefined
     Promise.all([
-      DriveAPI.folders(projectId),
-      DriveAPI.files(projectId),
+      DriveAPI.folders(fid ? undefined : projectId, fid),
+      DriveAPI.files(fid ? undefined : projectId, fid),
     ]).then(([folds, fils]) => { setFolders(folds); setFiles(fils) }).finally(() => setLoading(false))
-  }, [projectId])
+  }, [projectId, folderStack])
   useEffect(() => { load() }, [load])
 
   const createFolder = async () => {
     if (!newFolder.trim()) return
-    await DriveAPI.createFolder(newFolder.trim(), projectId)
+    await DriveAPI.createFolder(newFolder.trim(), currentFolderId ? undefined : projectId, currentFolderId)
     setNewFolder(''); load()
   }
+
+  const openFolder = (id: string, name: string) => setFolderStack(prev => [...prev, { id, name }])
+  const goBack = () => setFolderStack(prev => prev.slice(0, -1))
 
   const deleteFolder = async (id: string) => {
     if (!confirm('폴더를 삭제할까요?')) return
@@ -701,19 +708,15 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
   const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const form = new FormData()
-    form.append('file', file)
-    if (projectId) form.append('project_id', projectId)
     try {
-      const token = localStorage.getItem('moa_access_token')
-      await fetch('/api/drive/files', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form })
+      await DriveAPI.uploadFile(file, currentFolderId ? undefined : projectId, currentFolderId)
       load()
     } catch {}
     e.target.value = ''
   }
 
   const autoOrganize = async () => {
-    if (files.length === 0) { alert('정리할 파일이 없습니다.'); return }
+    if (currentFolderId) { alert('루트 드라이브에서만 AI 정리가 가능합니다.'); return }
     setOrganizing(true); setOrganizeMsg('')
     try {
       const result = await DriveAPI.autoOrganize(projectId)
@@ -729,7 +732,24 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
 
   return (
     <div style={{ maxWidth: 640 }}>
+      {folderStack.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+          <button onClick={() => setFolderStack([])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, padding: 0, fontSize: 13 }}>드라이브</button>
+          {folderStack.map((f, i) => (
+            <span key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>/</span>
+              {i < folderStack.length - 1
+                ? <button onClick={() => setFolderStack(prev => prev.slice(0, i + 1))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, padding: 0, fontSize: 13 }}>{f.name}</button>
+                : <span style={{ fontWeight: 600, color: 'var(--text)' }}>{f.name}</span>
+              }
+            </span>
+          ))}
+        </div>
+      )}
       <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        {folderStack.length > 0 && (
+          <button onClick={goBack} style={{ ...s.addBtn, background: 'var(--bg-muted)' }}>← 뒤로</button>
+        )}
         <div style={{ display: 'flex', gap: 8, flex: 1 }}>
           <input style={{ ...s.input, flex: 1 }} placeholder="새 폴더 이름" value={newFolder} onChange={e => setNewFolder(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolder()} />
           <button style={s.addBtn} onClick={createFolder}>폴더 만들기</button>
@@ -751,10 +771,11 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>폴더</div>
           {folders.map(f => (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 6 }}>
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 6, cursor: 'pointer' }} onClick={() => openFolder(f.id, f.name)}>
               <span style={{ fontSize: 18, marginRight: 10 }}>📁</span>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{f.name}</span>
-              <button onClick={() => deleteFolder(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginRight: 8 }}>{f.item_count > 0 ? `${f.item_count}개` : ''}</span>
+              <button onClick={e => { e.stopPropagation(); deleteFolder(f.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
             </div>
           ))}
         </div>

@@ -275,7 +275,12 @@ export interface FolderDTO { id: string; name: string; project_id: string | null
 export interface FileDTO { id: string; name: string; mime_type: string | null; size_bytes: number; project_id: string | null; folder_id: string | null; url: string | null; created_at: string; }
 
 export const DriveAPI = {
-  folders: (projectId?: string) => request<FolderDTO[]>(`/drive/folders${projectId ? `?project_id=${projectId}` : ''}`, { method: 'GET' }),
+  folders: (projectId?: string, parentId?: string) => {
+    const p = new URLSearchParams()
+    if (projectId) p.set('project_id', projectId)
+    if (parentId) p.set('parent_id', parentId)
+    return request<FolderDTO[]>(`/drive/folders?${p}`, { method: 'GET' })
+  },
   createFolder: (name: string, projectId?: string, parentId?: string) =>
     request<FolderDTO>('/drive/folders', { method: 'POST', body: JSON.stringify({ name, project_id: projectId, parent_id: parentId }) }),
   deleteFolder: (id: string) => request<void>(`/drive/folders/${id}`, { method: 'DELETE' }),
