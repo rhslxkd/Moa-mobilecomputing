@@ -84,7 +84,7 @@ def get_report(project_id: str, token: str) -> ReportResponse:
 
     todos = (
         supabase_admin.table("todos")
-        .select("id, title, done, assignee_member_id, difficulty")
+        .select("id, title, done, assignee_member_id, assignee_member_ids, difficulty")
         .eq("project_id", project_id)
         .execute()
     ).data
@@ -140,8 +140,19 @@ def get_report(project_id: str, token: str) -> ReportResponse:
 
     member_reports: list[MemberReportResponse] = []
     member_ctx: list[dict] = []
+    def _member_todos(member_id: str) -> list[dict]:
+        result = []
+        for t in todos:
+            ids = t.get("assignee_member_ids") or []
+            if ids:
+                if member_id in ids:
+                    result.append(t)
+            elif t.get("assignee_member_id") == member_id:
+                result.append(t)
+        return result
+
     for m in members:
-        m_todos = [t for t in todos if t.get("assignee_member_id") == m["id"]]
+        m_todos = _member_todos(m["id"])
         m_done_todos = [t for t in m_todos if t["done"]]
         m_done = len(m_done_todos)
         contribution = round(m_done / done_todos * 100) if done_todos else 0
@@ -176,7 +187,10 @@ def get_report(project_id: str, token: str) -> ReportResponse:
         })
 
     # 아무에게도 배정되지 않은(담당 해제된) 할 일
-    unassigned = [t for t in todos if not t.get("assignee_member_id")]
+    unassigned = [
+        t for t in todos
+        if not (t.get("assignee_member_ids") or []) and not t.get("assignee_member_id")
+    ]
     unassigned_ctx = {
         "count": len(unassigned),
         "titles": [(t.get("title") or "")[:40] for t in unassigned][:10],
