@@ -716,7 +716,7 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
   }
 
   const autoOrganize = async () => {
-    if (currentFolderId) { alert('루트 드라이브에서만 AI 정리가 가능합니다.'); return }
+    if (files.length === 0 && folders.length === 0) { alert('정리할 파일이 없습니다.'); return }
     setOrganizing(true); setOrganizeMsg('')
     try {
       const result = await DriveAPI.autoOrganize(projectId)
