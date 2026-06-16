@@ -501,33 +501,8 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
   const [selected, setSelected] = useState<MeetingDTO | null>(null)
   const [detailTab, setDetailTab] = useState<'summary' | 'attendance'>('summary')
 
-  // 회의 시작 모달
-  const [showStart, setShowStart] = useState(false)
-  const [startTitle, setStartTitle] = useState('')
-  const [starting, setStarting] = useState(false)
-  const [activeMeeting, setActiveMeeting] = useState<MeetingDTO | null>(null)
-  const [qrDataUrl, setQrDataUrl] = useState('')
-  const qrCanvasRef = useRef<HTMLCanvasElement>(null)
-
   const load = useCallback(() => MeetingAPI.list(projectId).then(setMeetings).finally(() => setLoading(false)), [projectId])
   useEffect(() => { load() }, [load])
-
-  const handleStart = async () => {
-    if (!startTitle.trim()) return
-    setStarting(true)
-    try {
-      const meeting = await MeetingAPI.start(startTitle.trim(), projectId)
-      setActiveMeeting(meeting)
-      setShowStart(false)
-      setStartTitle('')
-      // QR에 인코딩할 URL: 앱에서 /meetings/{id}/attend 호출하는 딥링크 또는 웹 URL
-      const attendUrl = `${window.location.origin}/attend/${meeting.id}`
-      const dataUrl = await QRCode.toDataURL(attendUrl, { width: 240, margin: 2 })
-      setQrDataUrl(dataUrl)
-      load()
-    } catch (err: any) { alert(err.message) }
-    finally { setStarting(false) }
-  }
 
   const handleDelete = async (e: React.MouseEvent, meetingId: string) => {
     e.stopPropagation()
@@ -538,24 +513,6 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
 
   if (loading) return <div style={s.center}><span className="spinner" /></div>
 
-  // QR 모달 (회의 진행 중)
-  if (activeMeeting && qrDataUrl) return (
-    <div style={{ maxWidth: 480, margin: '0 auto', textAlign: 'center' }}>
-      <div style={{ background: 'var(--bg-card)', borderRadius: 20, padding: 32, border: '1px solid var(--border)' }}>
-        <div style={{ fontSize: 22, marginBottom: 8 }}>🎙</div>
-        <div style={{ fontWeight: 700, fontSize: 18, marginBottom: 4 }}>{activeMeeting.title}</div>
-        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28 }}>회의가 시작됐어요. QR을 스캔해 출석체크하세요.</div>
-        <img src={qrDataUrl} alt="출석 QR" style={{ width: 220, height: 220, borderRadius: 12, marginBottom: 20 }} />
-        <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 24, wordBreak: 'break-all', padding: '0 16px' }}>
-          {`${window.location.origin}/attend/${activeMeeting.id}`}
-        </div>
-        <button onClick={() => { setActiveMeeting(null); setQrDataUrl('') }}
-          style={{ ...s.addBtn, width: '100%', padding: '12px 0' }}>회의 종료</button>
-      </div>
-    </div>
-  )
-
-  // 회의 상세
   if (selected) return (
     <div style={{ maxWidth: 640 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -572,7 +529,6 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
         {selected.started_at ? new Date(selected.started_at).toLocaleString('ko-KR') : ''}{selected.duration_seconds ? ` · ${Math.round(selected.duration_seconds / 60)}분` : ''}
       </div>
 
-      {/* 탭 */}
       <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
         {(['summary', 'attendance'] as const).map(t => (
           <button key={t} onClick={() => setDetailTab(t)}
@@ -626,36 +582,8 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
 
   return (
     <div style={{ maxWidth: 640 }}>
-      {/* 회의 시작 버튼 */}
-      <button onClick={() => setShowStart(true)}
-        style={{ ...s.addBtn, width: '100%', padding: '12px 0', marginBottom: 20, fontSize: 15 }}>
-        🎙 회의 시작
-      </button>
-
-      {/* 회의 시작 모달 */}
-      {showStart && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 24 }}
-          onClick={() => setShowStart(false)}>
-          <div style={{ background: 'var(--bg-card)', borderRadius: 16, padding: 24, width: '100%', maxWidth: 380 }} onClick={e => e.stopPropagation()}>
-            <div style={{ fontWeight: 700, fontSize: 16, marginBottom: 14 }}>회의 시작</div>
-            <input style={{ ...s.input, width: '100%', marginBottom: 16, boxSizing: 'border-box' }}
-              placeholder="회의 제목" value={startTitle} onChange={e => setStartTitle(e.target.value)}
-              autoFocus onKeyDown={e => e.key === 'Enter' && handleStart()} />
-            <div style={{ display: 'flex', gap: 8 }}>
-              <button onClick={handleStart} disabled={starting || !startTitle.trim()}
-                style={{ ...s.addBtn, flex: 1, opacity: starting || !startTitle.trim() ? 0.5 : 1 }}>
-                {starting ? '시작 중...' : '시작'}
-              </button>
-              <button onClick={() => setShowStart(false)}
-                style={{ flex: 1, padding: '10px 0', borderRadius: 10, border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-muted)', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
-                취소
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {meetings.length === 0 ? <div style={s.empty}>회의 기록이 없습니다</div>
+      {meetings.length === 0
+        ? <div style={s.empty}>회의 기록이 없습니다.<br /><span style={{ fontSize: 12 }}>앱에서 회의를 시작하면 여기에 기록이 쌓여요.</span></div>
         : meetings.map(m => (
           <div key={m.id} style={{ ...s.meetCard, position: 'relative', cursor: 'pointer' }} onClick={() => setSelected(m)}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, paddingRight: isLeader ? 60 : 0 }}>{m.title}</div>
@@ -665,8 +593,8 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
             {m.keywords.length > 0 && <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>{m.keywords.slice(0, 3).map(k => <span key={k} style={{ padding: '2px 8px', borderRadius: 12, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 11 }}>{k}</span>)}</div>}
             {isLeader && <button onClick={e => handleDelete(e, m.id)} style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 6, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 11, border: '1px solid var(--danger)', cursor: 'pointer' }}>삭제</button>}
           </div>
-        ))}
-      <canvas ref={qrCanvasRef} style={{ display: 'none' }} />
+        ))
+      }
     </div>
   )
 }
