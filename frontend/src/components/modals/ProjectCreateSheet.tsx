@@ -208,7 +208,7 @@ export default function ProjectCreateSheet({ isOpen, onClose, onCreate }: Props)
         <TouchableOpacity style={StyleSheet.absoluteFillObject} activeOpacity={1} onPress={onClose} />
 
         <KeyboardAvoidingView
-          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
           style={[styles.sheet, { backgroundColor: C.bgCard }]}
         >
           <View style={[styles.handle, { backgroundColor: C.border }]} />

@@ -668,7 +668,7 @@ export default function DriveScreen() {
                     )}
                     <FolderSvg color={fColor} size={ITEM_W * 0.75} />
                     <Text style={[s.folderName, { color: C.text }]} numberOfLines={2}>{folder.name}</Text>
-                    <Text style={[s.folderCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>
+                    {folder.isPersonal && <Text style={[s.folderCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>}
                   </TouchableOpacity>
                 );
               })}
@@ -691,7 +691,7 @@ export default function DriveScreen() {
                   <FolderSvg color={fColor} size={44} />
                   <View style={{ flex: 1 }}>
                     <Text style={[s.listName, { color: C.text }]} numberOfLines={1}>{folder.name}</Text>
-                    <Text style={[s.listCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>
+                    {folder.isPersonal && <Text style={[s.listCount, { color: C.textMuted }]}>{folder.count}개의 항목</Text>}
                   </View>
                 </TouchableOpacity>
               );
@@ -709,14 +709,6 @@ export default function DriveScreen() {
                 const firstId = [...selected][0];
                 const first = allFolders.find(f => f.id === firstId);
                 setColorSheetFolder({ id: firstId, name: selected.size > 1 ? `${selected.size}개 폴더` : (first?.name ?? "") });
-            }},
-            { icon: "📂", label: "이동", onPress: () => {
-                if (selected.size === 0) { Alert.alert("항목 선택", "이동할 폴더를 선택하세요."); return; }
-                Alert.alert("이동", "이동 기능은 준비 중이에요.");
-            }},
-            { icon: "📋", label: "복사", onPress: () => {
-                if (selected.size === 0) { Alert.alert("항목 선택", "복사할 폴더를 선택하세요."); return; }
-                Alert.alert("복사", "복사 기능은 준비 중이에요.");
             }},
             { icon: "🗑️", label: "삭제", onPress: () => {
                 if (selected.size === 0) { Alert.alert("항목 선택", "삭제할 폴더를 선택하세요."); return; }
