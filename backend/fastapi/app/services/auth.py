@@ -436,6 +436,22 @@ def change_password(req, token: str) -> None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+# ── 계정 삭제 ─────────────────────────────────────────────
+
+def delete_account(token: str) -> None:
+    """계정 및 관련 데이터 삭제."""
+    user = _get_user_from_token(token)
+    uid = user.id
+    # 관련 데이터 삭제
+    supabase_admin.table("user_affiliations").delete().eq("user_id", uid).execute()
+    supabase_admin.table("profiles").delete().eq("id", uid).execute()
+    # Supabase Auth 계정 삭제
+    try:
+        supabase_admin.auth.admin.delete_user(uid)
+    except AuthApiError as e:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
 # ── 아이디 변경 ────────────────────────────────────────────
 
 def change_username(req, token: str) -> None:

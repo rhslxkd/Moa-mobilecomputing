@@ -238,6 +238,9 @@ export const AuthAPI = {
   updateProfile: (body: { name: string; organization_name?: string; department?: string; student_id?: string }) =>
     request<MessageResponse>("/auth/profile", { method: "PATCH", body: JSON.stringify(body) }),
 
+  /** 계정 삭제 */
+  deleteAccount: () => request<MessageResponse>("/auth/account", { method: "DELETE" }),
+
   /** 비밀번호 변경 (현재 비번 검증) */
   changePassword: (body: { current_password: string; new_password: string }) =>
     request<MessageResponse>("/auth/change-password", { method: "POST", body: JSON.stringify(body) }),
