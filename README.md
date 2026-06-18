@@ -1,7 +1,7 @@
 # MOA — Team Project Collaboration Platform
 
 <p align="center">
-  <img src="frontend/assets/moa_mascot_keyart_v2.svg" alt="MOA Logo" width="300"/>
+  <img src="frontend/assets/moa_tools_gather_banner.svg" alt="MOA Logo" width="600"/>
 </p>
 
 MOA is a full-stack collaboration platform designed for university team projects. It combines task management, AI-powered meeting recording, file sharing, and contribution reporting into a single unified experience — available on both mobile (React Native) and web (React).
