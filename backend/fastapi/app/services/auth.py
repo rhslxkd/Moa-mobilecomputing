@@ -1,3 +1,4 @@
+import logging
 import requests
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
@@ -18,6 +19,8 @@ from app.schemas.auth import (
     TokenResponse,
 )
 from app.services import otp_store
+
+logger = logging.getLogger("moa.auth")
 
 # 회원가입 검증 대기: email -> 비밀번호(검증 후 자동 로그인용, 인메모리)
 _signup_pending: dict[str, str] = {}
@@ -439,12 +442,34 @@ def change_password(req, token: str) -> None:
 # ── 계정 삭제 ─────────────────────────────────────────────
 
 def delete_account(token: str) -> None:
-    """계정 및 관련 데이터 삭제."""
+    """계정 및 관련 데이터 삭제. FK 제약으로 Auth 삭제가 막히지 않도록 참조 행을 먼저 정리."""
     user = _get_user_from_token(token)
     uid = user.id
-    # 관련 데이터 삭제
-    supabase_admin.table("user_affiliations").delete().eq("user_id", uid).execute()
-    supabase_admin.table("profiles").delete().eq("id", uid).execute()
+
+    def _safe(fn):
+        try:
+            fn()
+        except Exception as e:
+            logger.warning("계정 삭제 정리 중 일부 실패(무시): %s", e)
+
+    # 본인이 owner인 프로젝트 삭제 (멤버/할일/회의 등은 ON DELETE CASCADE)
+    _safe(lambda: supabase_admin.table("projects").delete().eq("owner_id", uid).execute())
+    # 본인이 참여한 프로젝트 멤버 행
+    _safe(lambda: supabase_admin.table("project_members").delete().eq("user_id", uid).execute())
+    # 개인 소유 할 일
+    _safe(lambda: supabase_admin.table("todos").delete().eq("owner_id", uid).execute())
+    # 친구 관계 (양방향)
+    _safe(lambda: supabase_admin.table("friendships").delete().eq("requester_id", uid).execute())
+    _safe(lambda: supabase_admin.table("friendships").delete().eq("addressee_id", uid).execute())
+    # 일정 조율 응답 / 회의 출석 / 알림 읽음 / 푸시 토큰
+    _safe(lambda: supabase_admin.table("meet_availability").delete().eq("user_id", uid).execute())
+    _safe(lambda: supabase_admin.table("meeting_attendance").delete().eq("user_id", uid).execute())
+    _safe(lambda: supabase_admin.table("notification_reads").delete().eq("user_id", uid).execute())
+    _safe(lambda: supabase_admin.table("push_tokens").delete().eq("user_id", uid).execute())
+    # 소속 정보 / 프로필
+    _safe(lambda: supabase_admin.table("user_affiliations").delete().eq("user_id", uid).execute())
+    _safe(lambda: supabase_admin.table("profiles").delete().eq("id", uid).execute())
+
     # Supabase Auth 계정 삭제
     try:
         supabase_admin.auth.admin.delete_user(uid)
