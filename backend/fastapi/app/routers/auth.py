@@ -142,6 +142,12 @@ def change_password(req: ChangePasswordRequest, token: str = Depends(bearer_toke
     return {"message": "비밀번호가 변경되었습니다."}
 
 
+@router.delete("/account", response_model=MessageResponse)
+def delete_account(token: str = Depends(bearer_token)):
+    auth_service.delete_account(token)
+    return {"message": "계정이 삭제되었습니다."}
+
+
 @router.post("/change-username", response_model=MessageResponse)
 def change_username(req: ChangeUsernameRequest, token: str = Depends(bearer_token)):
     auth_service.change_username(req, token)

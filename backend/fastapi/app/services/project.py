@@ -128,7 +128,20 @@ def list_projects(token: str) -> list[ProjectResponse]:
         ).data
 
     all_projects = owned + extra
-    return [_build(p, _fetch_members(p["id"])) for p in all_projects]
+    if not all_projects:
+        return []
+    # 멤버를 한 번에 일괄 조회 (N+1 방지)
+    all_ids = [p["id"] for p in all_projects]
+    all_members = (
+        supabase_admin.table("project_members")
+        .select("*")
+        .in_("project_id", all_ids)
+        .execute()
+    ).data
+    members_by_project: dict[str, list[dict]] = {}
+    for m in all_members:
+        members_by_project.setdefault(m["project_id"], []).append(m)
+    return [_build(p, members_by_project.get(p["id"], [])) for p in all_projects]
 
 
 # ── 생성 ──────────────────────────────────────────────────

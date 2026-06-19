@@ -11,11 +11,10 @@ export default function Drive() {
   const [folders, setFolders] = useState<FolderDTO[]>([])
   const [files, setFiles] = useState<FileDTO[]>([])
   const [loading, setLoading] = useState(true)
-  // 드라이브 컨텍스트: '' = 내 드라이브(개인), 그 외 = project_id
   const [ctx, setCtx] = useState<string>('')
   const [projects, setProjects] = useState<ProjectDTO[]>([])
-  // 폴더 네비게이션 스택
   const [stack, setStack] = useState<{ id: string; name: string }[]>([])
+  const [organizing, setOrganizing] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
   const current = stack[stack.length - 1]
   const projectId = ctx || undefined
@@ -66,6 +65,17 @@ export default function Drive() {
     try { await DriveAPI.deleteFolder(id); load() } catch (e: any) { alert(e.message) }
   }
 
+  const autoOrganize = async () => {
+    if (!projectId) { alert('프로젝트를 먼저 선택하세요.'); return }
+    setOrganizing(true)
+    try {
+      const result = await DriveAPI.autoOrganize(projectId)
+      alert(result.message || `${result.moved}개 파일을 정리했어요.`)
+      load()
+    } catch (e: any) { alert(e.message || 'AI 정리에 실패했습니다.') }
+    finally { setOrganizing(false) }
+  }
+
   return (
     <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
       <div style={s.topbar}>
@@ -76,6 +86,11 @@ export default function Drive() {
         </select>
         <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
           <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={onUpload} />
+          {projectId && (
+            <button onClick={autoOrganize} disabled={organizing} style={s.btnGhost}>
+              {organizing ? '✨ AI 정리 중...' : '✨ AI로 파일 정리'}
+            </button>
+          )}
           <button onClick={createFolder} style={s.btnGhost}>+ 폴더</button>
           <button onClick={() => fileRef.current?.click()} style={s.btnPrimary}>파일 업로드</button>
         </div>

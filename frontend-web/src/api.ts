@@ -255,6 +255,8 @@ export const MeetingAPI = {
   list: (projectId?: string) => request<MeetingDTO[]>(`/meetings${projectId ? `?project_id=${projectId}` : ""}`, { method: "GET" }),
   get: (id: string) => request<MeetingDTO>(`/meetings/${id}`, { method: "GET" }),
   delete: (id: string) => request<void>(`/meetings/${id}`, { method: "DELETE" }),
+  start: (title: string, projectId: string) =>
+    request<MeetingDTO>('/meetings/start', { method: 'POST', body: JSON.stringify({ title, project_id: projectId }) }),
 };
 
 export const ReportAPI = {
@@ -269,11 +271,16 @@ export interface FriendRequestDTO {
 }
 export interface UserSearchResponse { user_id: string; username: string; name: string; }
 
-export interface FolderDTO { id: string; name: string; project_id: string | null; parent_id: string | null; created_at: string; }
+export interface FolderDTO { id: string; name: string; item_count: number; project_id: string | null; parent_id: string | null; created_at: string; }
 export interface FileDTO { id: string; name: string; mime_type: string | null; size_bytes: number; project_id: string | null; folder_id: string | null; url: string | null; created_at: string; }
 
 export const DriveAPI = {
-  folders: (projectId?: string) => request<FolderDTO[]>(`/drive/folders${projectId ? `?project_id=${projectId}` : ''}`, { method: 'GET' }),
+  folders: (projectId?: string, parentId?: string) => {
+    const p = new URLSearchParams()
+    if (projectId) p.set('project_id', projectId)
+    if (parentId) p.set('parent_id', parentId)
+    return request<FolderDTO[]>(`/drive/folders?${p}`, { method: 'GET' })
+  },
   createFolder: (name: string, projectId?: string, parentId?: string) =>
     request<FolderDTO>('/drive/folders', { method: 'POST', body: JSON.stringify({ name, project_id: projectId, parent_id: parentId }) }),
   deleteFolder: (id: string) => request<void>(`/drive/folders/${id}`, { method: 'DELETE' }),
@@ -285,6 +292,10 @@ export const DriveAPI = {
   },
   deleteFile: (id: string) => request<void>(`/drive/files/${id}`, { method: 'DELETE' }),
   downloadUrl: (id: string) => request<{ url: string }>(`/drive/files/${id}/download`, { method: 'GET' }),
+  autoOrganize: (projectId: string) =>
+    request<{ moved: number; folders: number; message: string }>('/drive/auto-organize', {
+      method: 'POST', body: JSON.stringify({ project_id: projectId }),
+    }),
   uploadFile: async (file: File, projectId?: string, folderId?: string): Promise<FileDTO> => {
     const form = new FormData();
     form.append('file', file);

@@ -13,6 +13,8 @@ import {
   Modal,
   Alert,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -485,6 +487,7 @@ export default function FriendsScreen() {
         animationType="slide"
         onRequestClose={() => setShowAddModal(false)}
       >
+        <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : "height"} style={{ flex: 1 }}>
         <View style={s.modalOverlay}>
           <TouchableOpacity style={StyleSheet.absoluteFillObject} onPress={() => setShowAddModal(false)} />
           <View style={[s.modalSheet, { backgroundColor: C.bgCard }]}>
@@ -539,6 +542,7 @@ export default function FriendsScreen() {
             </View>
           </View>
         </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* ── QR 모달 (내 QR / 스캔) ── */}

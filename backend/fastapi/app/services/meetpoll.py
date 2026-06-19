@@ -1,10 +1,15 @@
+from datetime import datetime, timedelta, timezone
+
 from fastapi import HTTPException, status
 from supabase_auth.errors import AuthApiError
 
 from app.core.supabase import supabase_admin
 from app.schemas.meetpoll import (
     MeetPollCreate, MeetPollResponse, MeetPollDetail, RespondentResponse,
+    ScheduleMeetingResponse,
 )
+
+KST = timezone(timedelta(hours=9))
 
 
 def _get_user(token: str):
@@ -185,6 +190,84 @@ def set_availability(poll_id: str, slots: list[str], token: str) -> MeetPollDeta
             {"poll_id": poll_id, "user_id": user.id, "name": name, "slots": slots}
         ).execute()
     return get_poll(poll_id, token)
+
+
+def schedule_meeting(poll_id: str, slot: str, token: str) -> ScheduleMeetingResponse:
+    """전원 가능 슬롯 중 하나를 회의로 확정.
+
+    - 해당 시간(H시~H+1시)으로 프로젝트 Todo 자동 생성
+    - 프로젝트 멤버 전원에게 즉시 '회의 확정' 푸시
+    - 회의 시작 1시간 전 FCM 푸시 예약 (scheduled_pushes)
+    """
+    user = _get_user(token)
+    rows = (
+        supabase_admin.table("meet_polls").select("*").eq("id", poll_id).limit(1).execute()
+    ).data
+    if not rows:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, detail="일정 조율을 찾을 수 없습니다.")
+    poll = rows[0]
+    project_id = poll["project_id"]
+    if not _has_project_access(project_id, user.id):
+        raise HTTPException(status.HTTP_403_FORBIDDEN, detail="프로젝트 멤버가 아닙니다.")
+
+    # 슬롯 파싱: "YYYY-MM-DD H"
+    try:
+        date_str, hour_str = slot.strip().rsplit(" ", 1)
+        y, m, d = (int(x) for x in date_str.split("-"))
+        hour = int(hour_str)
+        if not (0 <= hour <= 23):
+            raise ValueError
+    except (ValueError, AttributeError):
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, detail="시간 형식이 올바르지 않습니다.")
+
+    end_hour = hour + 1
+    title = f"📅 {poll['title']} ({hour}:00~{end_hour}:00)"
+
+    # 1) 프로젝트 Todo 자동 생성 (담당자 미지정 — 팀 전체 일정)
+    todo_row = (
+        supabase_admin.table("todos").insert({
+            "owner_id": user.id,
+            "title": title,
+            "description": f"{date_str} {hour}:00 ~ {end_hour}:00 회의",
+            "project_id": project_id,
+            "done": False,
+            "difficulty": 2,
+            "assignee_member_ids": [],
+            "start_date": date_str,
+            "due_date": date_str,
+        }).execute()
+    ).data[0]
+
+    # 2) 회의 시작 1시간 전 푸시 예약 (KST 기준 → UTC 저장)
+    meeting_kst = datetime(y, m, d, hour, 0, tzinfo=KST)
+    notify_at_utc = (meeting_kst - timedelta(hours=1)).astimezone(timezone.utc)
+    member_ids = _project_member_user_ids(project_id)
+    try:
+        supabase_admin.table("scheduled_pushes").insert({
+            "notify_at": notify_at_utc.isoformat(),
+            "title": "회의 1시간 전",
+            "body": f"'{poll['title']}' 회의가 {hour}:00에 시작해요. 곧 준비해주세요!",
+            "user_ids": member_ids,
+            "sent": False,
+        }).execute()
+    except Exception:
+        pass
+
+    # 3) 즉시 '회의 확정' 푸시 (본인 제외)
+    try:
+        from app.services import push
+        push.notify_users(
+            member_ids, "회의가 잡혔어요",
+            f"'{poll['title']}' 회의가 {date_str} {hour}:00로 확정됐어요.",
+            exclude=user.id,
+        )
+    except Exception:
+        pass
+
+    return ScheduleMeetingResponse(
+        todo_id=todo_row["id"], title=title, date=date_str,
+        start_hour=hour, end_hour=end_hour, notify_at=notify_at_utc.isoformat(),
+    )
 
 
 def delete_poll(poll_id: str, token: str) -> None:

@@ -760,14 +760,6 @@ export default function FolderDetailScreen() {
             <Text style={s.actionIcon}>🎨</Text>
             <Text style={[s.actionLabel, { color: C.textSub }]}>색상</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={s.actionItem} activeOpacity={0.7} onPress={() => Alert.alert("준비 중", "이동 기능은 곧 제공됩니다.")}>
-            <Text style={s.actionIcon}>📂</Text>
-            <Text style={[s.actionLabel, { color: C.textSub }]}>이동</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={s.actionItem} activeOpacity={0.7} onPress={() => Alert.alert("준비 중", "복사 기능은 곧 제공됩니다.")}>
-            <Text style={s.actionIcon}>📋</Text>
-            <Text style={[s.actionLabel, { color: C.textSub }]}>복사</Text>
-          </TouchableOpacity>
           <TouchableOpacity style={s.actionItem} activeOpacity={0.7} onPress={() => {
             if (selected.size === 0) return;
             setBulkDeleteVisible(true);

@@ -238,6 +238,9 @@ export const AuthAPI = {
   updateProfile: (body: { name: string; organization_name?: string; department?: string; student_id?: string }) =>
     request<MessageResponse>("/auth/profile", { method: "PATCH", body: JSON.stringify(body) }),
 
+  /** 계정 삭제 */
+  deleteAccount: () => request<MessageResponse>("/auth/account", { method: "DELETE" }),
+
   /** 비밀번호 변경 (현재 비번 검증) */
   changePassword: (body: { current_password: string; new_password: string }) =>
     request<MessageResponse>("/auth/change-password", { method: "POST", body: JSON.stringify(body) }),
@@ -530,9 +533,23 @@ export const MeetPollAPI = {
       method: "POST", body: JSON.stringify({ slots }),
     }),
 
+  scheduleMeeting: (pollId: string, slot: string) =>
+    request<ScheduleMeetingResultDTO>(`/meet-polls/${pollId}/schedule`, {
+      method: "POST", body: JSON.stringify({ slot }),
+    }),
+
   delete: (pollId: string) =>
     request<void>(`/meet-polls/${pollId}`, { method: "DELETE" }),
 };
+
+export interface ScheduleMeetingResultDTO {
+  todo_id: string;
+  title: string;
+  date: string;
+  start_hour: number;
+  end_hour: number;
+  notify_at: string;
+}
 
 // ── Report API ─────────────────────────────────────────────
 export interface MemberReportDTO {

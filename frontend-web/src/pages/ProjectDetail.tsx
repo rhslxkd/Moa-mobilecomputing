@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import QRCode from 'qrcode'
 import { useParams, useNavigate, useLocation } from 'react-router-dom'
 import {
   ProjectAPI, TodoAPI, MeetingAPI, ReportAPI, MeetPollAPI, ChatAPI, DriveAPI, MemberAPI, FriendAPI,
@@ -498,9 +499,10 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
   const [meetings, setMeetings] = useState<MeetingDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [selected, setSelected] = useState<MeetingDTO | null>(null)
+  const [detailTab, setDetailTab] = useState<'summary' | 'attendance'>('summary')
 
-  const load = () => MeetingAPI.list(projectId).then(setMeetings).finally(() => setLoading(false))
-  useEffect(() => { load() }, [projectId])
+  const load = useCallback(() => MeetingAPI.list(projectId).then(setMeetings).finally(() => setLoading(false)), [projectId])
+  useEffect(() => { load() }, [load])
 
   const handleDelete = async (e: React.MouseEvent, meetingId: string) => {
     e.stopPropagation()
@@ -514,7 +516,7 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
   if (selected) return (
     <div style={{ maxWidth: 640 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <button style={s.backLink} onClick={() => setSelected(null)}>← 목록으로</button>
+        <button style={s.backLink} onClick={() => { setSelected(null); setDetailTab('summary') }}>← 목록으로</button>
         {isLeader && (
           <button onClick={e => handleDelete(e, selected.id)}
             style={{ padding: '6px 14px', borderRadius: 8, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 12, border: '1px solid var(--danger)', cursor: 'pointer' }}>
@@ -522,22 +524,68 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
           </button>
         )}
       </div>
-      <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 6 }}>{selected.title}</h2>
+      <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>{selected.title}</h2>
       <div style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 20 }}>
-        {selected.started_at ? new Date(selected.started_at).toLocaleString('ko-KR') : ''} · {Math.round(selected.duration_seconds / 60)}분
+        {selected.started_at ? new Date(selected.started_at).toLocaleString('ko-KR') : ''}{selected.duration_seconds ? ` · ${Math.round(selected.duration_seconds / 60)}분` : ''}
       </div>
-      {selected.summary.length > 0 && <Section title="요약"><ul style={{ paddingLeft: 16 }}>{selected.summary.map((s, i) => <li key={i} style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 4 }}>{s}</li>)}</ul></Section>}
-      {selected.keywords.length > 0 && <Section title="키워드"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{selected.keywords.map(k => <span key={k} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 12 }}>{k}</span>)}</div></Section>}
-      {selected.participants.length > 0 && <Section title="참여자">{selected.participants.map(p => <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}><span style={{ fontSize: 13 }}>{p.name}</span><span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{Math.round(p.speak_time_seconds / 60)}분 발언</span></div>)}</Section>}
-      {selected.action_items.length > 0 && <Section title="액션 아이템">{selected.action_items.map((a, i) => <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0' }}><span style={{ color: a.added ? 'var(--success)' : 'var(--text-muted)' }}>•</span><span style={{ fontSize: 13, color: 'var(--text-sub)' }}>{a.title}</span></div>)}</Section>}
+
+      <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+        {(['summary', 'attendance'] as const).map(t => (
+          <button key={t} onClick={() => setDetailTab(t)}
+            style={{ padding: '6px 16px', borderRadius: 20, border: 'none', background: detailTab === t ? 'var(--primary)' : 'var(--bg-muted)', color: detailTab === t ? '#fff' : 'var(--text-sub)', fontWeight: 600, fontSize: 13, cursor: 'pointer' }}>
+            {t === 'summary' ? '회의록' : '출석'}
+          </button>
+        ))}
+      </div>
+
+      {detailTab === 'summary' && (
+        <>
+          {selected.summary.length > 0 && <Section title="요약"><ul style={{ paddingLeft: 16 }}>{selected.summary.map((s, i) => <li key={i} style={{ fontSize: 13, color: 'var(--text-sub)', marginBottom: 4 }}>{s}</li>)}</ul></Section>}
+          {selected.keywords.length > 0 && <Section title="키워드"><div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>{selected.keywords.map(k => <span key={k} style={{ padding: '3px 10px', borderRadius: 20, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 12 }}>{k}</span>)}</div></Section>}
+          {selected.participants.length > 0 && <Section title="발언자">{selected.participants.map(p => (
+            <div key={p.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px solid var(--border)' }}>
+              <span style={{ fontSize: 13 }}>{p.name}</span>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>{Math.round(p.speak_time_seconds / 60)}분 발언</span>
+            </div>
+          ))}</Section>}
+          {selected.action_items.length > 0 && <Section title="액션 아이템">{selected.action_items.map((a, i) => (
+            <div key={i} style={{ display: 'flex', gap: 8, padding: '6px 0' }}>
+              <span style={{ color: a.added ? 'var(--success)' : 'var(--text-muted)' }}>•</span>
+              <span style={{ fontSize: 13, color: 'var(--text-sub)' }}>{a.title}</span>
+            </div>
+          ))}</Section>}
+          {selected.summary.length === 0 && selected.participants.length === 0 && (
+            <div style={s.empty}>회의록이 아직 없습니다.</div>
+          )}
+        </>
+      )}
+
+      {detailTab === 'attendance' && (
+        <Section title={`출석 (${selected.attendance?.length ?? 0}명)`}>
+          {(selected.attendance ?? []).length === 0 ? (
+            <div style={{ fontSize: 13, color: 'var(--text-muted)', padding: '12px 0' }}>출석 기록이 없습니다.</div>
+          ) : (selected.attendance ?? []).map((a, i) => (
+            <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px 0', borderBottom: '1px solid var(--border)' }}>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 600 }}>{a.name}</div>
+                {a.joined_at && <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>{new Date(a.joined_at).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })} 참여</div>}
+              </div>
+              <span style={{ fontSize: 12, padding: '2px 10px', borderRadius: 10, background: a.late_seconds > 0 ? '#FEF2F2' : '#F0FDF4', color: a.late_seconds > 0 ? '#DC2626' : '#16A34A', fontWeight: 600 }}>
+                {a.late_seconds > 0 ? `${Math.round(a.late_seconds / 60)}분 지각` : '출석'}
+              </span>
+            </div>
+          ))}
+        </Section>
+      )}
     </div>
   )
 
   return (
     <div style={{ maxWidth: 640 }}>
-      {meetings.length === 0 ? <div style={s.empty}>회의 기록이 없습니다</div>
+      {meetings.length === 0
+        ? <div style={s.empty}>회의 기록이 없습니다.<br /><span style={{ fontSize: 12 }}>앱에서 회의를 시작하면 여기에 기록이 쌓여요.</span></div>
         : meetings.map(m => (
-          <div key={m.id} style={{ ...s.meetCard, position: 'relative' }} onClick={() => setSelected(m)}>
+          <div key={m.id} style={{ ...s.meetCard, position: 'relative', cursor: 'pointer' }} onClick={() => setSelected(m)}>
             <div style={{ fontWeight: 600, fontSize: 14, marginBottom: 4, paddingRight: isLeader ? 60 : 0 }}>{m.title}</div>
             <div style={{ fontSize: 12, color: 'var(--text-muted)' }}>
               {m.started_at ? new Date(m.started_at).toLocaleDateString('ko-KR') : m.created_at.slice(0, 10)} · {Math.round(m.duration_seconds / 60)}분 · 참여자 {m.participants.length}명
@@ -545,7 +593,8 @@ function MeetingsTab({ projectId, isLeader }: { projectId: string; isLeader: boo
             {m.keywords.length > 0 && <div style={{ display: 'flex', gap: 4, marginTop: 8, flexWrap: 'wrap' }}>{m.keywords.slice(0, 3).map(k => <span key={k} style={{ padding: '2px 8px', borderRadius: 12, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 11 }}>{k}</span>)}</div>}
             {isLeader && <button onClick={e => handleDelete(e, m.id)} style={{ position: 'absolute', top: 14, right: 14, padding: '4px 10px', borderRadius: 6, background: 'var(--danger-bg)', color: 'var(--danger)', fontWeight: 600, fontSize: 11, border: '1px solid var(--danger)', cursor: 'pointer' }}>삭제</button>}
           </div>
-        ))}
+        ))
+      }
     </div>
   )
 }
@@ -614,21 +663,30 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
   const [folders, setFolders] = useState<FolderDTO[]>([])
   const [loading, setLoading] = useState(true)
   const [newFolder, setNewFolder] = useState('')
+  const [organizing, setOrganizing] = useState(false)
+  const [organizeMsg, setOrganizeMsg] = useState('')
   const fileRef = useRef<HTMLInputElement>(null)
+  const [folderStack, setFolderStack] = useState<{ id: string; name: string }[]>([])
+  const currentFolderId = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : undefined
 
-  const load = () => {
+  const load = useCallback(() => {
+    setLoading(true)
+    const fid = folderStack.length > 0 ? folderStack[folderStack.length - 1].id : undefined
     Promise.all([
-      DriveAPI.folders(projectId),
-      DriveAPI.files(projectId),
+      DriveAPI.folders(fid ? undefined : projectId, fid),
+      DriveAPI.files(fid ? undefined : projectId, fid),
     ]).then(([folds, fils]) => { setFolders(folds); setFiles(fils) }).finally(() => setLoading(false))
-  }
-  useEffect(() => { load() }, [projectId])
+  }, [projectId, folderStack])
+  useEffect(() => { load() }, [load])
 
   const createFolder = async () => {
     if (!newFolder.trim()) return
-    await DriveAPI.createFolder(newFolder.trim(), projectId)
+    await DriveAPI.createFolder(newFolder.trim(), currentFolderId ? undefined : projectId, currentFolderId)
     setNewFolder(''); load()
   }
+
+  const openFolder = (id: string, name: string) => setFolderStack(prev => [...prev, { id, name }])
+  const goBack = () => setFolderStack(prev => prev.slice(0, -1))
 
   const deleteFolder = async (id: string) => {
     if (!confirm('폴더를 삭제할까요?')) return
@@ -650,15 +708,22 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
   const uploadFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
-    const form = new FormData()
-    form.append('file', file)
-    if (projectId) form.append('project_id', projectId)
     try {
-      const token = localStorage.getItem('moa_access_token')
-      await fetch('/api/drive/files', { method: 'POST', headers: token ? { Authorization: `Bearer ${token}` } : {}, body: form })
+      await DriveAPI.uploadFile(file, currentFolderId ? undefined : projectId, currentFolderId)
       load()
     } catch {}
     e.target.value = ''
+  }
+
+  const autoOrganize = async () => {
+    if (files.length === 0 && folders.length === 0) { alert('정리할 파일이 없습니다.'); return }
+    setOrganizing(true); setOrganizeMsg('')
+    try {
+      const result = await DriveAPI.autoOrganize(projectId)
+      setOrganizeMsg(result.message || `${result.moved}개 파일을 정리했어요.`)
+      load()
+    } catch (err: any) { setOrganizeMsg(err.message || 'AI 정리에 실패했습니다.') }
+    finally { setOrganizing(false) }
   }
 
   const formatSize = (b: number) => b > 1024 * 1024 ? `${(b / 1024 / 1024).toFixed(1)}MB` : b > 1024 ? `${(b / 1024).toFixed(0)}KB` : `${b}B`
@@ -667,7 +732,24 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
 
   return (
     <div style={{ maxWidth: 640 }}>
-      <div style={{ display: 'flex', gap: 10, marginBottom: 16, flexWrap: 'wrap' }}>
+      {folderStack.length > 0 && (
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 10, fontSize: 13, color: 'var(--text-muted)' }}>
+          <button onClick={() => setFolderStack([])} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, padding: 0, fontSize: 13 }}>드라이브</button>
+          {folderStack.map((f, i) => (
+            <span key={f.id} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <span>/</span>
+              {i < folderStack.length - 1
+                ? <button onClick={() => setFolderStack(prev => prev.slice(0, i + 1))} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontWeight: 600, padding: 0, fontSize: 13 }}>{f.name}</button>
+                : <span style={{ fontWeight: 600, color: 'var(--text)' }}>{f.name}</span>
+              }
+            </span>
+          ))}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 10, flexWrap: 'wrap' }}>
+        {folderStack.length > 0 && (
+          <button onClick={goBack} style={{ ...s.addBtn, background: 'var(--bg-muted)' }}>← 뒤로</button>
+        )}
         <div style={{ display: 'flex', gap: 8, flex: 1 }}>
           <input style={{ ...s.input, flex: 1 }} placeholder="새 폴더 이름" value={newFolder} onChange={e => setNewFolder(e.target.value)} onKeyDown={e => e.key === 'Enter' && createFolder()} />
           <button style={s.addBtn} onClick={createFolder}>폴더 만들기</button>
@@ -675,15 +757,25 @@ function DriveTab({ projectId, isLeader }: { projectId: string; isLeader: boolea
         <button style={s.addBtn} onClick={() => fileRef.current?.click()}>📎 파일 업로드</button>
         <input ref={fileRef} type="file" style={{ display: 'none' }} onChange={uploadFile} />
       </div>
+      <button onClick={autoOrganize} disabled={organizing}
+        style={{ width: '100%', marginBottom: 16, padding: '10px 0', borderRadius: 10, border: '1px solid var(--primary)', background: 'var(--primary-bg)', color: 'var(--primary)', fontWeight: 700, fontSize: 14, cursor: organizing ? 'not-allowed' : 'pointer', opacity: organizing ? 0.6 : 1 }}>
+        {organizing ? '✨ AI가 정리 중...' : '✨ AI로 비슷한 파일 정리하기'}
+      </button>
+      {organizeMsg && (
+        <div style={{ marginBottom: 14, padding: '10px 14px', borderRadius: 10, background: 'var(--primary-bg)', color: 'var(--primary)', fontSize: 13 }}>
+          {organizeMsg}
+        </div>
+      )}
 
       {folders.length > 0 && (
         <div style={{ marginBottom: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 8 }}>폴더</div>
           {folders.map(f => (
-            <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 6 }}>
+            <div key={f.id} style={{ display: 'flex', alignItems: 'center', padding: '10px 16px', background: 'var(--bg-card)', borderRadius: 10, border: '1px solid var(--border)', marginBottom: 6, cursor: 'pointer' }} onClick={() => openFolder(f.id, f.name)}>
               <span style={{ fontSize: 18, marginRight: 10 }}>📁</span>
               <span style={{ flex: 1, fontSize: 14, fontWeight: 500 }}>{f.name}</span>
-              <button onClick={() => deleteFolder(f.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
+              <span style={{ fontSize: 12, color: 'var(--text-muted)', marginRight: 8 }}>{f.item_count > 0 ? `${f.item_count}개` : ''}</span>
+              <button onClick={e => { e.stopPropagation(); deleteFolder(f.id) }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text-muted)', fontSize: 15 }}>×</button>
             </div>
           ))}
         </div>

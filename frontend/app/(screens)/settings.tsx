@@ -17,6 +17,7 @@ import { useRouter } from "expo-router";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/contexts/AuthContext";
 import { useProject } from "@/contexts/ProjectContext";
+import { AuthAPI } from "@/services/api";
 import MoaLogo from "@/components/common/MoaLogo";
 import Icon from "@/components/common/Icon";
 
@@ -60,8 +61,14 @@ export default function SettingsScreen() {
         {
           text: "삭제",
           style: "destructive",
-          onPress: () => {
-            Alert.alert("알림", "계정 삭제 기능은 준비 중입니다.\n문의가 필요하시면 고객센터로 연락해주세요.");
+          onPress: async () => {
+            try {
+              await AuthAPI.deleteAccount();
+              await logout();
+              router.replace("/(onboarding)/signin" as any);
+            } catch (e: any) {
+              Alert.alert("오류", e?.message ?? "계정 삭제에 실패했습니다.");
+            }
           },
         },
       ]
