@@ -54,6 +54,15 @@ def _project_member_user_ids(project_id: str) -> list[str]:
     return ids
 
 
+def _project_member_ids(project_id: str) -> list[str]:
+    """프로젝트의 accepted 멤버 row id 목록 (todo 담당자 배정용)."""
+    mems = (
+        supabase_admin.table("project_members").select("id")
+        .eq("project_id", project_id).eq("status", "accepted").execute()
+    ).data
+    return [m["id"] for m in mems if m.get("id")]
+
+
 def _display_name(user) -> str:
     rows = (
         supabase_admin.table("profiles")
@@ -223,7 +232,8 @@ def schedule_meeting(poll_id: str, slot: str, token: str) -> ScheduleMeetingResp
     end_hour = hour + 1
     title = f"📅 {poll['title']} ({hour}:00~{end_hour}:00)"
 
-    # 1) 프로젝트 Todo 자동 생성 (담당자 미지정 — 팀 전체 일정)
+    # 1) 프로젝트 Todo 자동 생성 (참여 멤버 전원 담당자로 배정)
+    member_row_ids = _project_member_ids(project_id)
     todo_row = (
         supabase_admin.table("todos").insert({
             "owner_id": user.id,
@@ -232,7 +242,7 @@ def schedule_meeting(poll_id: str, slot: str, token: str) -> ScheduleMeetingResp
             "project_id": project_id,
             "done": False,
             "difficulty": 2,
-            "assignee_member_ids": [],
+            "assignee_member_ids": member_row_ids,
             "start_date": date_str,
             "due_date": date_str,
         }).execute()
