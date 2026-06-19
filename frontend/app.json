@@ -2,6 +2,7 @@
   "expo": {
     "name": "MOA",
     "slug": "moa",
+    "owner": "song9679",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/logo_1.png",
@@ -68,7 +69,7 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "ee20218a-d574-4997-b254-52ce828162ec"
+        "projectId": "6d60b543-5123-4c03-901a-57db1b56693b"
       }
     }
   }
