@@ -31,6 +31,8 @@ export default function When2MeetGridScreen() {
   const [mine, setMine] = useState<Set<string>>(new Set());
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [pickedSlot, setPickedSlot] = useState<string | null>(null);
+  const [scheduling, setScheduling] = useState(false);
 
   const load = useCallback(() => {
     if (!pollId) return;
@@ -65,6 +67,33 @@ export default function When2MeetGridScreen() {
     }
   };
 
+  const confirmSchedule = () => {
+    if (!pollId || !pickedSlot) return;
+    const [date, h] = pickedSlot.split(" ");
+    const { top } = fmtDateShort(date);
+    Alert.alert(
+      "회의 확정",
+      `${top} ${h}:00 ~ ${Number(h) + 1}:00 로 회의를 잡을까요?\n\n· 할 일에 자동으로 추가돼요\n· 회의 1시간 전 모든 팀원에게 알림이 가요`,
+      [
+        { text: "취소", style: "cancel" },
+        {
+          text: "확정", onPress: async () => {
+            setScheduling(true);
+            try {
+              const r = await MeetPollAPI.scheduleMeeting(pollId, pickedSlot);
+              setPickedSlot(null);
+              Alert.alert("회의 확정 완료", `'${r.title}'\n할 일에 추가됐고, 회의 1시간 전 알림이 예약됐어요.`);
+            } catch (e: any) {
+              Alert.alert("실패", e?.message ?? "회의를 잡을 수 없어요.");
+            } finally {
+              setScheduling(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const handleDelete = () => {
     if (!pollId) return;
     Alert.alert("삭제", "이 일정 조율을 삭제할까요?", [
@@ -97,15 +126,6 @@ export default function When2MeetGridScreen() {
     const alpha = Math.round((0.18 + 0.82 * ratio) * 255).toString(16).padStart(2, "0");
     return PRIMARY + alpha;
   };
-
-  // 추천(전원 가능) 슬롯 텍스트
-  const bestText = poll.best_slots.length > 0
-    ? poll.best_slots.slice(0, 6).map((sk) => {
-        const [date, h] = sk.split(" ");
-        const { top } = fmtDateShort(date);
-        return `${top} ${h}시`;
-      }).join(", ")
-    : null;
 
   return (
     <SafeAreaView style={[s.safe, { backgroundColor: C.bg }]} edges={["bottom"]}>
@@ -172,12 +192,53 @@ export default function When2MeetGridScreen() {
           </View>
         </ScrollView>
 
-        {/* 추천 시간 */}
+        {/* 추천 시간 — 탭하여 회의 확정 */}
         <View style={[s.bestCard, { backgroundColor: C.primary + "10", borderColor: C.primary + "30" }]}>
           <Text style={[s.bestTitle, { color: C.primary }]}>⭐ 전원 가능한 시간</Text>
-          <Text style={[s.bestBody, { color: C.textSub }]}>
-            {bestText ?? "아직 전원이 겹치는 시간이 없어요. 더 많은 멤버가 참여하면 표시됩니다."}
-          </Text>
+          {poll.best_slots.length > 0 ? (
+            <>
+              <Text style={[s.bestBody, { color: C.textSub }]}>회의로 잡을 시간을 선택하세요.</Text>
+              <View style={s.slotChips}>
+                {poll.best_slots.map((sk) => {
+                  const [date, h] = sk.split(" ");
+                  const { top } = fmtDateShort(date);
+                  const picked = pickedSlot === sk;
+                  return (
+                    <TouchableOpacity
+                      key={sk}
+                      activeOpacity={0.8}
+                      onPress={() => setPickedSlot(picked ? null : sk)}
+                      style={[
+                        s.slotChip,
+                        { borderColor: C.primary },
+                        picked ? { backgroundColor: C.primary } : { backgroundColor: "transparent" },
+                      ]}
+                    >
+                      <Text style={{ fontSize: 13, fontWeight: "700", color: picked ? "#fff" : C.primary }}>
+                        {top} {h}:00~{Number(h) + 1}:00
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+              {pickedSlot && (
+                <TouchableOpacity
+                  style={[s.scheduleBtn, { backgroundColor: C.primary }]}
+                  onPress={confirmSchedule}
+                  disabled={scheduling}
+                  activeOpacity={0.85}
+                >
+                  {scheduling
+                    ? <ActivityIndicator size="small" color="#fff" />
+                    : <Text style={s.scheduleBtnText}>📌 이 시간으로 회의 잡기</Text>}
+                </TouchableOpacity>
+              )}
+            </>
+          ) : (
+            <Text style={[s.bestBody, { color: C.textSub }]}>
+              아직 전원이 겹치는 시간이 없어요. 더 많은 멤버가 참여하면 표시됩니다.
+            </Text>
+          )}
         </View>
 
         {/* 참여자 */}
@@ -211,9 +272,13 @@ const s = StyleSheet.create({
   headerTitle: { flex: 1, fontSize: 16, fontWeight: "700", textAlign: "center" },
   iconBtn: { width: 40, height: 40, alignItems: "center", justifyContent: "center" },
   guide: { fontSize: 13, lineHeight: 19, padding: 16 },
-  bestCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 14, borderWidth: 1, padding: 14, gap: 6 },
+  bestCard: { marginHorizontal: 16, marginTop: 16, borderRadius: 14, borderWidth: 1, padding: 14, gap: 8 },
   bestTitle: { fontSize: 14, fontWeight: "700" },
   bestBody: { fontSize: 13, lineHeight: 20 },
+  slotChips: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginTop: 2 },
+  slotChip: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1.5 },
+  scheduleBtn: { marginTop: 8, paddingVertical: 13, borderRadius: 12, alignItems: "center" },
+  scheduleBtnText: { fontSize: 15, fontWeight: "700", color: "#fff" },
   saveBar: { position: "absolute", bottom: 0, left: 0, right: 0, borderTopWidth: 1, paddingHorizontal: 16, paddingTop: 10 },
   saveBtn: { paddingVertical: 14, borderRadius: 14, alignItems: "center" },
   saveText: { fontSize: 15, fontWeight: "700" },

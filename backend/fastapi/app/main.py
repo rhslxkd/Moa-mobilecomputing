@@ -65,3 +65,9 @@ app.include_router(chat.router)
 app.include_router(invitation.router)
 app.include_router(drive.router)
 app.include_router(meetpoll.router)
+
+
+@app.on_event("startup")
+def _start_scheduler() -> None:
+    from app.services import scheduler
+    scheduler.start()

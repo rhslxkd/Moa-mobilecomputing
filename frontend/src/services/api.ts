@@ -533,9 +533,23 @@ export const MeetPollAPI = {
       method: "POST", body: JSON.stringify({ slots }),
     }),
 
+  scheduleMeeting: (pollId: string, slot: string) =>
+    request<ScheduleMeetingResultDTO>(`/meet-polls/${pollId}/schedule`, {
+      method: "POST", body: JSON.stringify({ slot }),
+    }),
+
   delete: (pollId: string) =>
     request<void>(`/meet-polls/${pollId}`, { method: "DELETE" }),
 };
+
+export interface ScheduleMeetingResultDTO {
+  todo_id: string;
+  title: string;
+  date: string;
+  start_hour: number;
+  end_hour: number;
+  notify_at: string;
+}
 
 // ── Report API ─────────────────────────────────────────────
 export interface MemberReportDTO {
