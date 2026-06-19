@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends
 from app.schemas.meetpoll import (
     MeetPollCreate, MeetPollResponse, MeetPollDetail, AvailabilityBody,
+    ScheduleMeetingBody, ScheduleMeetingResponse,
 )
 from app.routers.auth import bearer_token
 import app.services.meetpoll as svc
@@ -26,6 +27,11 @@ def get_poll(poll_id: str, token: str = Depends(bearer_token)):
 @router.post("/meet-polls/{poll_id}/availability", response_model=MeetPollDetail)
 def set_availability(poll_id: str, req: AvailabilityBody, token: str = Depends(bearer_token)):
     return svc.set_availability(poll_id, req.slots, token)
+
+
+@router.post("/meet-polls/{poll_id}/schedule", response_model=ScheduleMeetingResponse)
+def schedule_meeting(poll_id: str, req: ScheduleMeetingBody, token: str = Depends(bearer_token)):
+    return svc.schedule_meeting(poll_id, req.slot, token)
 
 
 @router.delete("/meet-polls/{poll_id}", status_code=204)

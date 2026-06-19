@@ -37,3 +37,16 @@ class MeetPollDetail(MeetPollResponse):
 
 class AvailabilityBody(BaseModel):
     slots: list[str] = []              # ["YYYY-MM-DD H", ...]
+
+
+class ScheduleMeetingBody(BaseModel):
+    slot: str                          # "YYYY-MM-DD H" (확정할 1시간 슬롯)
+
+
+class ScheduleMeetingResponse(BaseModel):
+    todo_id: str
+    title: str
+    date: str                          # "YYYY-MM-DD"
+    start_hour: int
+    end_hour: int
+    notify_at: str                     # ISO (UTC) — 회의 1시간 전 푸시 발송 예정 시각
