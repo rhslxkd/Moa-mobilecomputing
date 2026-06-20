@@ -49,7 +49,7 @@ MOA is a full-stack collaboration platform designed for university team projects
 | Layer | Technology |
 |-------|-----------|
 | Mobile App | React Native 0.81 + Expo 54, Expo Router, EAS Build, Google Play Store |
-| Web | React + TypeScript, Vite, Cloudflare Pages (`moa-team.org`) |
+| Web | React + TypeScript, Vite, Cloudflare Pages (`moa-team.org`)<- you can connect this link |
 | Backend | FastAPI (Python), Railway |
 | Database | Supabase (PostgreSQL + Auth + Storage) |
 | AI - STT | Daglo API |
